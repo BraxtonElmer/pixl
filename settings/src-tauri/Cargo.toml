@@ -1,0 +1,31 @@
+[package]
+name = "pixl-settings"
+description = "Pixl settings window"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+pixl-platform = { path = "../../crates/platform" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri = { version = "2", features = [] }
+
+[dependencies.windows-sys]
+version = "0.59"
+features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_System_Registry",
+    "Win32_System_Threading",
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+]
+
+[features]
+# Serve the built page from inside the exe (what users get). `npm run tauri dev` turns it off.
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]

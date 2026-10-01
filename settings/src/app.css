@@ -1,0 +1,319 @@
+:root {
+  --font: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
+  --font-display: 'Segoe UI Variable Display', 'Segoe UI', system-ui, sans-serif;
+
+  --accent: #0067c0;
+  --on-accent: #ffffff;
+
+  --bg: #f3f3f3;
+  --surface: #fbfbfb;
+  --surface-2: #f6f6f6;
+  --well: #eeeeee;
+  --stroke: rgba(0, 0, 0, 0.08);
+  --stroke-strong: rgba(0, 0, 0, 0.16);
+  --text: #1a1a1a;
+  --text-2: #5c5c5c;
+  --control: #ffffff;
+  --control-hover: #f5f5f5;
+  --tile: #ffffff;
+  --warn-bg: #fff4ce;
+  --warn-text: #5c4400;
+  --line: #e0394b;
+  --bad: #c42b1c;
+  --bad-bg: #fde7e9;
+  --good: #0f7b0f;
+  --good-bg: #dff6dd;
+  --screen-on: #e4e9f1;
+  --screen-off: #0d0e10;
+  --tip-bg: #2b2b2b;
+  --tip-text: #ffffff;
+  --bg-solid: #f3f3f3;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+
+  --radius: 8px;
+  --radius-sm: 6px;
+  --fast: 150ms cubic-bezier(0.2, 0, 0, 1);
+
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  --bg: #202020;
+  --surface: #2b2b2b;
+  --surface-2: #262626;
+  --well: #1c1c1c;
+  --stroke: rgba(255, 255, 255, 0.07);
+  --stroke-strong: rgba(255, 255, 255, 0.14);
+  --text: #ffffff;
+  --text-2: #c5c5c5;
+  --control: #333333;
+  --control-hover: #3a3a3a;
+  --tile: #333333;
+  --warn-bg: #433519;
+  --warn-text: #fce100;
+  --line: #ff5a6b;
+  --bad: #ff99a4;
+  --bad-bg: #442726;
+  --good: #6ccb5f;
+  --good-bg: #1e3a1c;
+  --screen-on: #3a4250;
+  --screen-off: #050506;
+  --tip-bg: #f3f3f3;
+  --tip-text: #1a1a1a;
+  --bg-solid: #202020;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  color-scheme: dark;
+}
+
+/* Mica: the window itself is tinted by the wallpaper; surfaces go slightly see-through. */
+:root[data-material='mica'] {
+  --bg: transparent;
+  --surface: rgba(255, 255, 255, 0.72);
+  --surface-2: rgba(255, 255, 255, 0.5);
+  --well: rgba(0, 0, 0, 0.035);
+}
+:root[data-material='mica'][data-theme='dark'] {
+  --surface: rgba(255, 255, 255, 0.05);
+  --surface-2: rgba(255, 255, 255, 0.035);
+  --well: rgba(0, 0, 0, 0.18);
+}
+
+/* Frosted glass: a dense grey frost over whatever is behind the window.
+   Cards are slightly lighter panes with a thin highlight on the top edge;
+   a faint grain gives the frost its texture. No colour washes. */
+:root[data-material='acrylic'] {
+  /* Windows 11 draws its own acrylic and ignores the requested tint, so the
+     frost's darkness is set here. */
+  --bg: rgba(236, 236, 240, 0.3);
+  --surface: rgba(255, 255, 255, 0.55);
+  --surface-2: rgba(255, 255, 255, 0.42);
+  --well: rgba(0, 0, 0, 0.05);
+  --stroke: rgba(255, 255, 255, 0.55);
+  --stroke-strong: rgba(0, 0, 0, 0.14);
+  --control: rgba(255, 255, 255, 0.6);
+  --control-hover: rgba(255, 255, 255, 0.8);
+  --tile: rgba(255, 255, 255, 0.7);
+  --shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6), 0 6px 20px rgba(0, 0, 0, 0.08);
+}
+:root[data-material='acrylic'][data-theme='dark'] {
+  /* A light tint so the blur behind clearly shows; cards are smoked glass so
+     text on them stays crisp whatever is behind the window. */
+  --bg: rgba(12, 12, 14, 0.32);
+  --surface: rgba(16, 16, 19, 0.5);
+  --surface-2: rgba(16, 16, 19, 0.4);
+  --well: rgba(0, 0, 0, 0.32);
+  --stroke: rgba(255, 255, 255, 0.1);
+  --stroke-strong: rgba(255, 255, 255, 0.18);
+  --control: rgba(255, 255, 255, 0.08);
+  --control-hover: rgba(255, 255, 255, 0.13);
+  --tile: rgba(46, 46, 51, 0.96);
+  --text: #f5f5f7;
+  --text-2: #c9c9cf;
+  --shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+:root[data-material='acrylic'] body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 100;
+  opacity: 0.05;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.43 var(--font);
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  overflow: hidden;
+}
+
+#app {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+button,
+input {
+  font: inherit;
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--stroke-strong);
+  background: var(--control);
+  cursor: pointer;
+  transition: background var(--fast), border-color var(--fast);
+  white-space: nowrap;
+}
+.btn:hover {
+  background: var(--control-hover);
+}
+.btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.btn.primary {
+  background: var(--accent);
+  border-color: transparent;
+  color: var(--on-accent);
+}
+.btn.primary:hover {
+  filter: brightness(1.08);
+}
+.btn svg {
+  flex-shrink: 0;
+}
+
+.link {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--accent);
+  cursor: pointer;
+}
+.link:hover {
+  text-decoration: underline;
+}
+
+.muted {
+  color: var(--text-2);
+}
+
+.small {
+  font-size: 12px;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+
+h2 {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.pad {
+  padding: 16px;
+}
+
+select {
+  font: inherit;
+  color: inherit;
+}
+
+/* Status pills: the colour says how things stand at a glance. */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 9px;
+  border-radius: 11px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.pill::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.pill.good {
+  background: var(--good-bg);
+  color: var(--good);
+}
+.pill.warn {
+  background: var(--warn-bg);
+  color: var(--warn-text);
+}
+.pill.bad {
+  background: var(--bad-bg);
+  color: var(--bad);
+}
+.pill.neutral {
+  background: var(--well);
+  color: var(--text-2);
+}
+
+.banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  font-size: 13px;
+}
+.banner.warn {
+  background: var(--warn-bg);
+  color: var(--warn-text);
+}
+.banner.error {
+  background: var(--bad-bg);
+  color: var(--bad);
+}
+.banner .grow {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Setting rows inside a card: text on the left, control on the right. */
+.row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--stroke);
+}
+.row:last-child {
+  border-bottom: 0;
+}
+.row > .text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.row .t {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.row.stack {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}

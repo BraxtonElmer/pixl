@@ -1,0 +1,54 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Pixl",
+  "mainBinaryName": "pixl-settings",
+  "version": "0.1.0",
+  "identifier": "io.github.braxtonelmer.pixl",
+  "build": {
+    "frontendDist": "../build",
+    "devUrl": "http://localhost:5174",
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build && node scripts/prepare-sidecar.mjs"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Pixl",
+        "width": 1120,
+        "height": 860,
+        "minWidth": 760,
+        "minHeight": 600,
+        "center": true,
+        "transparent": true,
+        "decorations": false,
+        "shadow": true,
+        "visible": false
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src ipc: http://ipc.localhost"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "icon": ["icons/icon.ico", "icons/icon.png"],
+    "externalBin": ["binaries/Pixl"],
+    "publisher": "BraxtonElmer",
+    "copyright": "Copyright (C) 2026 BraxtonElmer",
+    "category": "Utility",
+    "license": "GPL-3.0-only",
+    "licenseFile": "../../LICENSE",
+    "shortDescription": "Turns your screens off when you're not using them",
+    "longDescription": "Pixl turns each screen off when you stop using it and back on the moment you return, while your PC keeps running. Built to protect OLED panels.",
+    "homepage": "https://github.com/BraxtonElmer/pixl",
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "installerIcon": "icons/icon.ico",
+        "installerHooks": "windows/hooks.nsh"
+      }
+    }
+  }
+}
