@@ -1,22 +1,19 @@
 //! The tray app's hidden window: watches the user a few times a second, runs
 //! the idle engine, and turns screens off and on. Also the tray icon and menu,
 //! shortcuts, messages from the settings window, and display, power and
-//! session changes. Everything but DDC/CI runs on this one thread.
+//! session changes. Everything runs on this one thread.
 
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::ptr::{null, null_mut};
 
 use pixl_core::{Action, Engine, Inputs, Phase, ScreenInputs};
-use pixl_platform::config::{Config, FADE_MS, Hotkey, Method, ScreenRule, TriggerSetting};
-use pixl_platform::ddc::{POWER_OFF, POWER_ON, Physical, VCP_POWER};
+use pixl_platform::config::{Config, FADE_MS, Hotkey, ScreenRule, TriggerSetting};
 use pixl_platform::display::{self, Display};
-use pixl_platform::status::{
-    OffBy, PowerResult, PowerStore, PowerSupport, ScreenPhase, ScreenStatus, Status, TestStatus, TestStep, unix_ms,
-};
+use pixl_platform::status::{ScreenPhase, ScreenStatus, Status, unix_ms};
 use pixl_platform::tray::{
-    MSG_ALL, MSG_OPEN_SETTINGS, MSG_PAUSE, MSG_RECHECK, MSG_RELOAD, MSG_TEST_ANSWER, MSG_TEST_CANCEL, MSG_TEST_START,
-    MSG_WATCH, PAUSE_UNTIL_RESTART, WINDOW_CLASS, taskbar_created_message,
+    MSG_ALL, MSG_OPEN_SETTINGS, MSG_PAUSE, MSG_RELOAD, MSG_WATCH, PAUSE_UNTIL_RESTART, WINDOW_CLASS,
+    taskbar_created_message,
 };
 use pixl_platform::wide::{fill_wide, to_wide};
 use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, WPARAM};
@@ -26,8 +23,7 @@ use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
     MOD_ALT, MOD_CONTROL, MOD_NOREPEAT, MOD_SHIFT, MOD_WIN, RegisterHotKey, UnregisterHotKey,
 };
 use windows_sys::Win32::UI::Shell::{
-    NIF_ICON, NIF_INFO, NIF_MESSAGE, NIF_TIP, NIIF_RESPECT_QUIET_TIME, NIIF_WARNING, NIM_ADD, NIM_DELETE, NIM_MODIFY,
-    NOTIFYICONDATAW, Shell_NotifyIconW,
+    NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NIM_DELETE, NIM_MODIFY, NOTIFYICONDATAW, Shell_NotifyIconW,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyIcon, DestroyMenu, DispatchMessageW,
@@ -39,7 +35,6 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 };
 
 use crate::input::{self, Input};
-use crate::power::{Done, Job, MSG_POWER_DONE, Worker};
 use crate::sampler::Sampler;
 use crate::{icon, overlay, watch};
 
@@ -62,11 +57,6 @@ const SAMPLE_AFTER_IDLE_MS: u64 = 5000;
 const APPS_EVERY_MS: u64 = 5000;
 /// Keep status.json fresh this long after the settings window last asked.
 const WATCH_MS: u64 = 5000;
-/// "Test power off": how long the screen stays off, then how long it gets to come back.
-const TEST_OFF_MS: u64 = 5000;
-const TEST_WAKE_MS: u64 = 3500;
-/// After waking an untested screen, check it's really on after this long.
-const VERIFY_AFTER_MS: u64 = 3500;
 
 const CMD_OPEN: usize = 10;
 const CMD_TOGGLE: usize = 11;
@@ -87,53 +77,28 @@ enum Pause {
     UntilRestart,
 }
 
-#[derive(Clone, Copy)]
-enum Verify {
-    /// Woke an untested screen; check it's on at this time.
-    AfterOn { at: u64, retried: bool },
-    /// Asked it to read back its power state; waiting for the answer.
-    Reading { retried: bool },
-}
-
 struct Screen {
     d: Display,
     rule: ScreenRule,
-    support: PowerSupport,
-    note: String,
-    off_by: Option<OffBy>,
-    verify: Option<Verify>,
     last_change: u64,
     next_sample: u64,
-    /// The power-mode value that means "off" for this monitor (04 or 05).
-    off_value: u32,
     /// Why it's being kept on right now (fullscreen game, paused...).
     held_by: Option<String>,
-}
-
-struct Test {
-    id: String,
-    step: TestStep,
-    at: u64,
-    stayed_connected: bool,
-    reports_on: bool,
 }
 
 struct App {
     hwnd: HWND,
     config: Config,
-    store: PowerStore,
     screens: Vec<Screen>,
     engine: Engine,
     input: Input,
     sampler: Sampler,
-    worker: Worker,
     pause: Option<Pause>,
     locked: bool,
     watch_until: u64,
     running: HashSet<String>,
     next_apps_scan: u64,
     hotkeys_taken: Vec<String>,
-    test: Option<Test>,
     ticks: u64,
     icon: HICON,
     taskbar_created: u32,
@@ -179,19 +144,16 @@ pub fn run(open_settings_now: bool) {
         *a.borrow_mut() = Some(App {
             hwnd,
             config: Config::load(),
-            store: PowerStore::load(),
             screens: Vec::new(),
             engine: Engine::new(),
             input: Input::new(),
             sampler: Sampler::default(),
-            worker: Worker::start(hwnd as usize),
             pause: None,
             locked: false,
             watch_until: 0,
             running: HashSet::new(),
             next_apps_scan: 0,
             hotkeys_taken: Vec::new(),
-            test: None,
             ticks: 0,
             icon: null_mut(),
             taskbar_created: taskbar_created_message(),
@@ -235,23 +197,6 @@ impl App {
         let now = self.now();
         let found = display::detect();
         let mut old = std::mem::take(&mut self.screens);
-
-        // A screen we powered off that Windows no longer sees: it dropped off
-        // the cable when it went to sleep, so DDC/CI can't wake it.
-        for s in old.iter().filter(|s| s.off_by == Some(OffBy::Power) && !found.iter().any(|d| d.id == s.d.id)) {
-            let note = "Windows disconnects this screen while it's powered off, which moves your open windows. \
-                        Pixl covers it with black instead.";
-            remember(&mut self.store, &s.d.id, false, note);
-            self.notify(
-                "Press the screen's power button",
-                &format!(
-                    "Screen {} disconnected when it turned off, so Pixl can't turn it back on. From now on Pixl will \
-                     cover it with black instead.",
-                    s.d.number
-                ),
-            );
-        }
-
         for d in found {
             let rule = self.config.rule_for(&d.id);
             let screen = match old.iter().position(|s| s.d.id == d.id) {
@@ -264,22 +209,7 @@ impl App {
                     s.rule = rule;
                     s
                 }
-                None => {
-                    let mut s = Screen {
-                        d,
-                        rule,
-                        support: PowerSupport::Checking,
-                        note: String::new(),
-                        off_by: None,
-                        verify: None,
-                        last_change: 0,
-                        next_sample: 0,
-                        off_value: POWER_OFF,
-                        held_by: None,
-                    };
-                    learn_support(&self.store, &self.worker, &mut s);
-                    s
-                }
+                None => Screen { d, rule, last_change: 0, next_sample: 0, held_by: None },
             };
             self.screens.push(screen);
         }
@@ -293,7 +223,6 @@ impl App {
                 overlay::hide(&id);
             }
         }
-        let _ = self.store.save();
         self.sync_engine();
         self.tray(NIM_MODIFY);
     }
@@ -303,10 +232,6 @@ impl App {
         let list: Vec<_> = self.screens.iter().map(|s| (s.d.id.clone(), s.rule.to_rule())).collect();
         let actions = self.engine.set_screens(&list, now);
         self.apply(actions);
-    }
-
-    fn index_of(&self, id: &str) -> Option<usize> {
-        self.screens.iter().position(|s| s.d.id == id)
     }
 
     // ---- the tick ----
@@ -320,8 +245,6 @@ impl App {
             self.pause = None;
             self.tray(NIM_MODIFY);
         }
-        self.step_test(now);
-        self.step_verify(now);
 
         if !self.locked {
             self.input.sample();
@@ -363,7 +286,6 @@ impl App {
             self.running.clear();
         }
         let app = c.keep_on_apps.iter().find(|a| self.running.contains(&a.to_lowercase())).cloned();
-        let testing = self.test.as_ref().map(|t| t.id.clone());
 
         let mut out = Vec::with_capacity(self.screens.len());
         for (i, s) in self.screens.iter_mut().enumerate() {
@@ -371,8 +293,6 @@ impl App {
                 Some("Pixl is turned off".to_string())
             } else if self.pause.is_some() {
                 Some("Paused".into())
-            } else if testing.as_deref() == Some(s.d.id.as_str()) {
-                Some("Testing power off".into())
             } else if fullscreen == Some(s.d.hmonitor) {
                 Some("A fullscreen app is open".into())
             } else if let Some(app) = &app {
@@ -420,8 +340,17 @@ impl App {
                         overlay::hide(&s.d.id);
                     }
                 }
-                Action::TurnOff(i) => self.turn_off(i),
-                Action::Wake(i) => self.wake(i),
+                Action::TurnOff(i) => {
+                    if let Some(s) = self.screens.get(i) {
+                        overlay::show(&s.d.id, s.d.px, now, 0);
+                        self.sampler.forget(&s.d.id);
+                    }
+                }
+                Action::Wake(i) => {
+                    if let Some(s) = self.screens.get(i) {
+                        overlay::hide(&s.d.id);
+                    }
+                }
             }
         }
         if fading {
@@ -430,51 +359,6 @@ impl App {
         if self.now() < self.watch_until {
             self.write_status();
         }
-    }
-
-    fn turn_off(&mut self, i: usize) {
-        let now = self.now();
-        let Some(s) = self.screens.get_mut(i) else { return };
-        self.sampler.forget(&s.d.id);
-        // Most monitors drop off the cable when powered down and then only their
-        // button wakes them, so Automatic powers off only screens that passed the
-        // test. "Power off only" is the user opting in, so it tries untested ones.
-        let can_power = match s.rule.method {
-            Method::Power => matches!(s.support, PowerSupport::Works | PowerSupport::Untested),
-            _ => s.support == PowerSupport::Works,
-        };
-        match (s.rule.method, can_power) {
-            // A screen that can't be powered off is always covered, so it's never left lit.
-            (Method::Black, _) | (_, false) => {
-                overlay::show(&s.d.id, s.d.px, now, 0);
-                s.off_by = Some(OffBy::Black);
-            }
-            (method, true) => {
-                // The black cover stays up under a powered-off screen, so it
-                // stays dark even if the monitor wakes itself up.
-                if method == Method::Power {
-                    overlay::hide(&s.d.id);
-                } else {
-                    overlay::show(&s.d.id, s.d.px, now, 0);
-                }
-                s.off_by = Some(OffBy::Power);
-                s.verify = None;
-                self.worker.send(Job::Set { id: s.d.id.clone(), hmonitor: s.d.hmonitor, value: s.off_value });
-            }
-        }
-    }
-
-    fn wake(&mut self, i: usize) {
-        let now = self.now();
-        let Some(s) = self.screens.get_mut(i) else { return };
-        overlay::hide(&s.d.id);
-        if s.off_by == Some(OffBy::Power) {
-            self.worker.send(Job::Set { id: s.d.id.clone(), hmonitor: s.d.hmonitor, value: POWER_ON });
-            if s.support == PowerSupport::Untested {
-                s.verify = Some(Verify::AfterOn { at: now + VERIFY_AFTER_MS, retried: false });
-            }
-        }
-        s.off_by = None;
     }
 
     fn wake_all(&mut self) {
@@ -497,203 +381,6 @@ impl App {
             self.wake_all();
         }
         self.tray(NIM_MODIFY);
-        self.write_status();
-    }
-
-    // ---- learning whether power off works ----
-
-    /// Untested screens that were woken: make sure they really came back.
-    fn step_verify(&mut self, now: u64) {
-        for s in &mut self.screens {
-            if let Some(Verify::AfterOn { at, retried }) = s.verify
-                && now >= at
-            {
-                s.verify = Some(Verify::Reading { retried });
-                self.worker.send(Job::Read { id: s.d.id.clone(), hmonitor: s.d.hmonitor });
-            }
-        }
-    }
-
-    fn power_done(&mut self) {
-        let now = self.now();
-        for done in self.worker.finished() {
-            match done {
-                Done::Probed { id, supported, note, off_value } => {
-                    let Some(i) = self.index_of(&id) else { continue };
-                    let s = &mut self.screens[i];
-                    s.off_value = off_value;
-                    // A remembered test result wins over what the monitor claims.
-                    if s.support == PowerSupport::Checking {
-                        s.support = if supported { PowerSupport::Untested } else { PowerSupport::Unsupported };
-                        s.note = note.to_string();
-                    }
-                }
-                Done::Set { id, on: false, ok: false } => {
-                    if let Some(t) = &mut self.test
-                        && t.id == id
-                    {
-                        t.step = TestStep::Refused;
-                    }
-                    let note = "This screen didn't accept the power-off command, so Pixl covers it with black.";
-                    remember(&mut self.store, &id, false, note);
-                    let _ = self.store.save();
-                    if let Some(i) = self.index_of(&id) {
-                        let s = &mut self.screens[i];
-                        s.support = PowerSupport::Failed;
-                        s.note = note.into();
-                        if s.off_by == Some(OffBy::Power) && s.rule.method != Method::Power {
-                            overlay::show(&s.d.id, s.d.px, now, 0);
-                            s.off_by = Some(OffBy::Black);
-                        }
-                    }
-                }
-                Done::Set { .. } => {}
-                Done::Read { id, on } => {
-                    if let Some(t) = &mut self.test
-                        && t.id == id
-                        && t.step == TestStep::Waking
-                    {
-                        t.reports_on = on == Some(true);
-                        t.step = TestStep::Ask;
-                    }
-                    let Some(i) = self.index_of(&id) else { continue };
-                    let Some(Verify::Reading { retried }) = self.screens[i].verify else { continue };
-                    let s = &mut self.screens[i];
-                    if on == Some(true) {
-                        s.verify = None;
-                        s.support = PowerSupport::Works;
-                        s.note = "Turns off and comes back on by itself.".into();
-                        remember(&mut self.store, &id, true, &s.note);
-                        let _ = self.store.save();
-                    } else if !retried {
-                        self.worker.send(Job::Set { id: id.clone(), hmonitor: s.d.hmonitor, value: POWER_ON });
-                        s.verify = Some(Verify::AfterOn { at: now + VERIFY_AFTER_MS, retried: true });
-                    } else {
-                        s.verify = None;
-                        s.support = PowerSupport::Failed;
-                        s.note =
-                            "This screen didn't come back on by itself, so Pixl covers it with black instead.".into();
-                        remember(&mut self.store, &id, false, &s.note);
-                        let _ = self.store.save();
-                        let n = s.d.number;
-                        self.notify(
-                            "Press the screen's power button",
-                            &format!(
-                                "Screen {n} didn't turn back on by itself. From now on Pixl will cover it with black \
-                                 instead."
-                            ),
-                        );
-                    }
-                }
-            }
-        }
-        if self.now() < self.watch_until {
-            self.write_status();
-        }
-    }
-
-    fn start_test(&mut self, i: usize) {
-        if self.test.is_some() {
-            return;
-        }
-        let now = self.now();
-        let Some(s) = self.screens.get(i) else { return };
-        if s.d.internal {
-            return;
-        }
-        let id = s.d.id.clone();
-        if let Some(a) = self.engine.wake(i, now) {
-            self.apply(vec![a]);
-        }
-        let s = &self.screens[i];
-        overlay::hide(&id);
-        self.worker.send(Job::Set { id: id.clone(), hmonitor: s.d.hmonitor, value: s.off_value });
-        self.test =
-            Some(Test { id, step: TestStep::Off, at: now + TEST_OFF_MS, stayed_connected: true, reports_on: false });
-        self.write_status();
-    }
-
-    fn step_test(&mut self, now: u64) {
-        let Some(t) = &mut self.test else { return };
-        if now < t.at {
-            return;
-        }
-        match t.step {
-            TestStep::Off => {
-                // Does Windows still see it while it's off?
-                let found = display::detect().into_iter().find(|d| d.id == t.id);
-                t.stayed_connected = found.is_some();
-                if let Some(d) = found {
-                    self.worker.send(Job::Set { id: t.id.clone(), hmonitor: d.hmonitor, value: POWER_ON });
-                    t.step = TestStep::Waking;
-                    t.at = now + TEST_WAKE_MS;
-                } else {
-                    t.step = TestStep::Ask;
-                }
-            }
-            TestStep::Waking => {
-                if let Some(d) = self.screens.iter().find(|s| s.d.id == t.id) {
-                    self.worker.send(Job::Read { id: t.id.clone(), hmonitor: d.d.hmonitor });
-                }
-                // The read answers through power_done; don't send it twice.
-                t.at = u64::MAX;
-            }
-            TestStep::Ask | TestStep::Refused => {}
-        }
-        self.write_status();
-    }
-
-    fn answer_test(&mut self, came_back: bool) {
-        let Some(t) = self.test.take() else { return };
-        let (works, note) = if t.step == TestStep::Refused {
-            (false, "This screen didn't accept the power-off command, so Pixl covers it with black.")
-        } else if !came_back {
-            (false, "This screen didn't come back on by itself, so Pixl covers it with black instead.")
-        } else if !t.stayed_connected {
-            (
-                false,
-                "Windows disconnects this screen while it's powered off, which moves your open windows. Pixl covers \
-                 it with black instead.",
-            )
-        } else {
-            (true, "Tested: it turns off and comes back on by itself.")
-        };
-        remember(&mut self.store, &t.id, works, note);
-        let _ = self.store.save();
-        if let Some(i) = self.index_of(&t.id) {
-            let s = &mut self.screens[i];
-            s.support = if works { PowerSupport::Works } else { PowerSupport::Failed };
-            s.note = note.into();
-            s.verify = None;
-            let now = self.now();
-            if let Some(a) = self.engine.wake(i, now) {
-                self.apply(vec![a]);
-            }
-        }
-        self.write_status();
-    }
-
-    fn cancel_test(&mut self) {
-        let Some(t) = self.test.take() else { return };
-        if let Some(s) = self.screens.iter().find(|s| s.d.id == t.id) {
-            self.worker.send(Job::Set { id: t.id.clone(), hmonitor: s.d.hmonitor, value: POWER_ON });
-        }
-        self.write_status();
-    }
-
-    /// Forget what we learned and ask the monitor(s) again.
-    fn recheck(&mut self, which: usize) {
-        let ids: Vec<String> = match self.screens.get(which) {
-            Some(s) => vec![s.d.id.clone()],
-            None => self.screens.iter().map(|s| s.d.id.clone()).collect(),
-        };
-        for id in ids {
-            self.store.monitors.remove(&id);
-            if let Some(i) = self.index_of(&id) {
-                learn_support(&self.store, &self.worker, &mut self.screens[i]);
-            }
-        }
-        let _ = self.store.save();
         self.write_status();
     }
 
@@ -776,11 +463,7 @@ impl App {
                         px: s.d.px,
                         inches: s.d.inches,
                         connection: s.d.connection.clone(),
-                        internal: s.d.internal,
-                        power: s.support,
-                        power_note: s.note.clone(),
                         phase,
-                        off_by: s.off_by,
                         remaining_secs: if held_by.is_some() {
                             None
                         } else {
@@ -790,12 +473,6 @@ impl App {
                     }
                 })
                 .collect(),
-            test: self.test.as_ref().map(|t| TestStatus {
-                id: t.id.clone(),
-                step: t.step,
-                stayed_connected: t.stayed_connected,
-                reports_on: t.reports_on,
-            }),
         };
         let _ = status.save();
     }
@@ -824,15 +501,6 @@ impl App {
         nid
     }
 
-    fn notify(&self, title: &str, text: &str) {
-        let mut nid = self.nid();
-        nid.uFlags = NIF_INFO;
-        nid.dwInfoFlags = NIIF_WARNING | NIIF_RESPECT_QUIET_TIME;
-        fill_wide(&mut nid.szInfoTitle, title);
-        fill_wide(&mut nid.szInfo, text);
-        unsafe { Shell_NotifyIconW(NIM_MODIFY, &nid) };
-    }
-
     fn status_line(&self) -> String {
         let managed = self.screens.iter().filter(|s| s.rule.enabled).count();
         match (self.config.enabled, self.pause) {
@@ -851,44 +519,14 @@ impl App {
         (0..self.engine.len()).any(|i| self.engine.phase(i) != Phase::On)
     }
 
-    /// Put every powered-off screen back on before quitting.
+    /// Uncover every screen before quitting.
     fn shutdown(&mut self) {
         overlay::hide_all();
-        for s in &self.screens {
-            if s.off_by == Some(OffBy::Power)
-                && let Some(m) = Physical::open(s.d.hmonitor)
-            {
-                m.set(VCP_POWER, POWER_ON);
-            }
-        }
         unsafe { Shell_NotifyIconW(NIM_DELETE, &self.nid()) };
         for id in [HOTKEY_OFF, HOTKEY_WAKE, HOTKEY_PAUSE] {
             unsafe { UnregisterHotKey(self.hwnd, id) };
         }
     }
-}
-
-/// Set a screen's power support from what we remember, or ask the monitor.
-fn learn_support(store: &PowerStore, worker: &Worker, s: &mut Screen) {
-    if s.d.internal {
-        s.support = PowerSupport::Unsupported;
-        s.note = "Built-in screens can't be powered off by Pixl, so they're covered with black.".into();
-        return;
-    }
-    if let Some(r) = store.monitors.get(&s.d.id) {
-        s.support = if r.works { PowerSupport::Works } else { PowerSupport::Failed };
-        s.note = r.note.clone();
-    } else {
-        s.support = PowerSupport::Checking;
-        s.note.clear();
-    }
-    // Always asked: the answer also says which value means "off" for this monitor.
-    worker.send(Job::Probe { id: s.d.id.clone(), hmonitor: s.d.hmonitor });
-}
-
-fn remember(store: &mut PowerStore, id: &str, works: bool, note: &str) {
-    let at = unix_ms() / 1000;
-    store.monitors.insert(id.to_string(), PowerResult { works, note: note.to_string(), at });
 }
 
 fn register_hotkey(hwnd: HWND, id: i32, k: &Hotkey) -> bool {
@@ -1054,10 +692,6 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
             with_app(App::redetect);
             0
         }
-        MSG_POWER_DONE => {
-            with_app(App::power_done);
-            0
-        }
         WM_TRAY => {
             match (lparam & 0xFFFF) as u32 {
                 WM_LBUTTONUP => open_settings(),
@@ -1097,22 +731,6 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
             } else {
                 with_app(App::wake_all);
             }
-            0
-        }
-        MSG_TEST_START => {
-            with_app(|a| a.start_test(wparam));
-            0
-        }
-        MSG_TEST_ANSWER => {
-            with_app(|a| a.answer_test(lparam == 1));
-            0
-        }
-        MSG_TEST_CANCEL => {
-            with_app(App::cancel_test);
-            0
-        }
-        MSG_RECHECK => {
-            with_app(|a| a.recheck(wparam));
             0
         }
         WM_HOTKEY => {

@@ -22,7 +22,6 @@
   import ScreenPanel from './lib/ScreenPanel.svelte';
   import Segmented from './lib/Segmented.svelte';
   import Switch from './lib/Switch.svelte';
-  import TestDialog from './lib/TestDialog.svelte';
   import TitleBar from './lib/TitleBar.svelte';
 
   let st = $state<State | null>(null);
@@ -30,7 +29,6 @@
   let fetchedAt = $state(Date.now());
   let now = $state(Date.now());
   let selected = $state(0);
-  let testing = $state<number | null>(null);
   let pauseMenu = $state(false);
   let error = $state('');
   /** The tray app hasn't answered for a while. */
@@ -309,8 +307,6 @@
             {screen}
             rule={rules[selected]}
             onchange={(r) => setRule(screen.id, r)}
-            ontest={() => (testing = selected)}
-            onrecheck={() => api.recheck(selected)}
           />
         {/if}
       </div>
@@ -449,19 +445,6 @@
     </footer>
   </main>
 
-  {#if testing !== null && screens[testing]}
-    <TestDialog
-      screen={screens[testing]}
-      test={status?.test ?? null}
-      onstart={() => api.testStart(testing!)}
-      oncancel={() => api.testCancel()}
-      onanswer={(yes) => {
-        api.testAnswer(yes);
-        testing = null;
-      }}
-      onclose={() => (testing = null)}
-    />
-  {/if}
 {/if}
 
 <style>

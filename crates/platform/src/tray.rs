@@ -18,16 +18,8 @@ pub const MSG_OPEN_SETTINGS: u32 = WM_APP + 3;
 pub const MSG_WATCH: u32 = WM_APP + 4;
 /// Pause for wparam minutes; 0 resumes, `PAUSE_UNTIL_RESTART` pauses until Pixl restarts.
 pub const MSG_PAUSE: u32 = WM_APP + 5;
-/// Start "Test power off" on the screen at index wparam of status.json.
-pub const MSG_TEST_START: u32 = WM_APP + 6;
-/// The user's answer to the test: lparam 1 = it came back, 0 = it stayed dark.
-pub const MSG_TEST_ANSWER: u32 = WM_APP + 7;
-/// Stop a running test and wake the screen.
-pub const MSG_TEST_CANCEL: u32 = WM_APP + 8;
-/// Ask the monitors about power control again (forgets earlier test results for wparam index, or all with usize::MAX).
-pub const MSG_RECHECK: u32 = WM_APP + 9;
 /// Turn every screen off now (wparam 1) or wake every screen (wparam 0).
-pub const MSG_ALL: u32 = WM_APP + 10;
+pub const MSG_ALL: u32 = WM_APP + 6;
 
 pub const PAUSE_UNTIL_RESTART: usize = usize::MAX;
 

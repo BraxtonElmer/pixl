@@ -1,6 +1,6 @@
 [package]
 name = "pixl-platform"
-description = "Windows side of Pixl shared by the tray app and the settings window: monitors, DDC/CI, config"
+description = "Windows side of Pixl shared by the tray app and the settings window: monitors, running apps, config"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

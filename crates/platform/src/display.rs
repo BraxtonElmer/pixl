@@ -53,8 +53,6 @@ pub struct Display {
     pub inches: Option<f64>,
     /// "HDMI", "DisplayPort", "Built-in"...
     pub connection: String,
-    /// A laptop's own panel: there's no DDC/CI to talk to.
-    pub internal: bool,
     /// Windows' handle for this monitor; valid until the next display change.
     pub hmonitor: usize,
 }
@@ -105,7 +103,6 @@ pub fn detect() -> Vec<Display> {
                 number: g.device.trim_start_matches(r"\\.\DISPLAY").parse().unwrap_or(0),
                 inches,
                 connection: connection_name(tech).to_string(),
-                internal: is_internal(tech),
                 hmonitor: g.hmonitor,
             }
         })

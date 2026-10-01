@@ -41,7 +41,7 @@
     "license": "GPL-3.0-only",
     "licenseFile": "../../LICENSE",
     "shortDescription": "Turns your screens off when you're not using them",
-    "longDescription": "Pixl turns each screen off when you stop using it and back on the moment you return, while your PC keeps running. Built to protect OLED panels.",
+    "longDescription": "Pixl turns each screen black when you stop using it and back on the moment you return, while your PC keeps running. Built to protect OLED panels.",
     "homepage": "https://github.com/BraxtonElmer/pixl",
     "windows": {
       "nsis": {

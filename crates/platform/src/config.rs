@@ -62,25 +62,12 @@ pub enum WakeSetting {
     Cursor,
 }
 
-/// How a screen is turned off.
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
-#[serde(rename_all = "lowercase")]
-pub enum Method {
-    /// Power off over DDC/CI when the monitor supports it, otherwise black.
-    Auto,
-    /// Power off only; never cover it with black.
-    Power,
-    /// Always cover it with a black window.
-    Black,
-}
-
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
 #[serde(default, rename_all = "camelCase")]
 pub struct ScreenRule {
     pub enabled: bool,
     pub trigger: TriggerSetting,
     pub timeout_secs: u32,
-    pub method: Method,
     pub wake: WakeSetting,
     pub typing_counts: bool,
     pub stay_on_while_playing: bool,
@@ -93,7 +80,6 @@ impl Default for ScreenRule {
             enabled: true,
             trigger: TriggerSetting::Pc,
             timeout_secs: 5 * 60,
-            method: Method::Auto,
             wake: WakeSetting::Any,
             typing_counts: true,
             stay_on_while_playing: true,
@@ -279,7 +265,7 @@ mod tests {
         assert!(c.pause_in_fullscreen);
         let r = c.rule_for("A");
         assert_eq!(r.timeout_secs, 90);
-        assert_eq!(r.method, Method::Auto);
+        assert!(r.fade);
         assert_eq!(c.rule_for("B"), ScreenRule::default());
     }
 

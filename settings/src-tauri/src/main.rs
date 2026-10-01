@@ -24,10 +24,6 @@ fn main() {
             commands::start_tray,
             commands::pause,
             commands::turn_all,
-            commands::test_start,
-            commands::test_answer,
-            commands::test_cancel,
-            commands::recheck,
             commands::open_apps,
             commands::set_start_with_windows,
             commands::apply_material,
@@ -44,12 +40,6 @@ fn main() {
             };
             material::apply(&window, &a.material, dark);
             Ok(())
-        })
-        .on_window_event(|_, event| {
-            if let tauri::WindowEvent::Destroyed = event {
-                // Never leave a test running with its screen off.
-                commands::test_cancel();
-            }
         })
         .run(tauri::generate_context!())
         .expect("failed to start the settings window");

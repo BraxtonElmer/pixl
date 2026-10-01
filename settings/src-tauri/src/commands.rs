@@ -4,10 +4,7 @@
 
 use pixl_platform::config::{self, Config};
 use pixl_platform::status::{Status, unix_ms};
-use pixl_platform::tray::{
-    self, MSG_ALL, MSG_PAUSE, MSG_RECHECK, MSG_RELOAD, MSG_TEST_ANSWER, MSG_TEST_CANCEL, MSG_TEST_START, MSG_WATCH,
-    PAUSE_UNTIL_RESTART,
-};
+use pixl_platform::tray::{self, MSG_ALL, MSG_PAUSE, MSG_RELOAD, MSG_WATCH, PAUSE_UNTIL_RESTART};
 use pixl_platform::{apps, autostart};
 use serde::Serialize;
 
@@ -67,26 +64,6 @@ pub fn pause(minutes: i64) -> bool {
 #[tauri::command]
 pub fn turn_all(off: bool) -> bool {
     tray::post(MSG_ALL, usize::from(off), 0)
-}
-
-#[tauri::command]
-pub fn test_start(index: usize) -> bool {
-    tray::post(MSG_TEST_START, index, 0)
-}
-
-#[tauri::command]
-pub fn test_answer(came_back: bool) -> bool {
-    tray::post(MSG_TEST_ANSWER, 0, isize::from(came_back))
-}
-
-#[tauri::command]
-pub fn test_cancel() -> bool {
-    tray::post(MSG_TEST_CANCEL, 0, 0)
-}
-
-#[tauri::command]
-pub fn recheck(index: usize) -> bool {
-    tray::post(MSG_RECHECK, index, 0)
 }
 
 /// Programs with a window open right now, to pick from for the keep-on list.

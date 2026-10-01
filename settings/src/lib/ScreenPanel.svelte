@@ -1,6 +1,6 @@
 <script lang="ts">
   // Everything about one screen: when it turns off, how, and how it wakes.
-  import type { Method, ScreenRule, ScreenStatus } from './api';
+  import type { ScreenRule, ScreenStatus } from './api';
   import Help from './Help.svelte';
   import Segmented from './Segmented.svelte';
   import Switch from './Switch.svelte';
@@ -10,46 +10,13 @@
     screen,
     rule,
     onchange,
-    ontest,
-    onrecheck,
   }: {
     screen: ScreenStatus;
     rule: ScreenRule;
     onchange: (r: ScreenRule) => void;
-    ontest: () => void;
-    onrecheck: () => void;
   } = $props();
 
   const set = <K extends keyof ScreenRule>(k: K, v: ScreenRule[K]) => onchange({ ...rule, [k]: v });
-
-  /** The screen offers power control, so it can be tested or forced. */
-  const canPower = $derived(screen.power === 'works' || screen.power === 'untested');
-  /** Automatic only powers off screens that passed the test. */
-  const autoPowers = $derived(screen.power === 'works');
-  const usesPower = $derived(rule.method === 'power' ? canPower : rule.method === 'auto' && autoPowers);
-
-  const pill = $derived.by((): [string, string] => {
-    switch (screen.power) {
-      case 'checking':
-        return ['neutral', 'Checking the screen…'];
-      case 'works':
-        return ['good', 'Power off works'];
-      case 'untested':
-        return ['warn', 'Power off not tested'];
-      case 'failed':
-        return ['bad', "Power off didn't work"];
-      default:
-        return ['bad', "Can't power off"];
-    }
-  });
-
-  const note = $derived.by(() => {
-    if (screen.powerNote) return screen.powerNote;
-    if (screen.power === 'untested')
-      return "This screen says the PC can power it off. Many screens then disconnect and only their power button brings them back, so Pixl uses a black screen unless a test shows this one comes back by itself.";
-    if (screen.power === 'checking') return 'Asking the screen whether the PC can power it off.';
-    return '';
-  });
 
   const details = $derived(
     [screen.inches ? `${screen.inches.toFixed(1)}″` : '', screen.connection, `${screen.px.w} × ${screen.px.h}`]
@@ -103,52 +70,6 @@
 
     <div class="block">
       <div class="block-title">
-        How should it turn off?
-        <Help text="Power off uses the screen's own controls (DDC/CI) to put it to sleep, like pressing its power button. A black screen covers it with a black window instead; on OLED that switches the pixels off too. Automatic uses black, and powers the screen off only once 'Test power off' has shown it comes back by itself." />
-      </div>
-      <div class="method">
-        <div class="top">
-          <span class="pill {pill[0]}">{pill[1]}</span>
-          <span class="grow"></span>
-          {#if !screen.internal}
-            {#if canPower}
-              <button class="btn" onclick={ontest}>
-                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M8 1.5v6" /><path d="M4.2 4a5.5 5.5 0 1 0 7.6 0" /></svg>
-                {screen.power === 'works' ? 'Test again' : 'Test power off'}
-              </button>
-            {:else if screen.power !== 'checking'}
-              <button class="btn" onclick={onrecheck}>Check again</button>
-            {/if}
-          {/if}
-        </div>
-        <Segmented
-          label="How to turn it off"
-          value={rule.method}
-          options={[
-            { value: 'auto' as Method, label: 'Automatic' },
-            ...(canPower || rule.method === 'power' ? [{ value: 'power' as Method, label: 'Power off only' }] : []),
-            { value: 'black' as Method, label: 'Black screen only' },
-          ]}
-          onchange={(m) => set('method', m)}
-        />
-        <div class="flow" aria-label="What Pixl will do">
-          {#if rule.method === 'black'}
-            <span class="step cur">Black screen</span>
-          {:else if rule.method === 'power' && canPower}
-            <span class="step cur">Power off</span><span>no black cover underneath</span>
-          {:else if autoPowers}
-            <span class="step cur">Power off</span><span>→ if that fails →</span><span class="step">Black screen</span>
-          {:else}
-            <span class="step cur">Black screen</span>
-            {#if canPower}<span>power off after a passing test</span>{/if}
-          {/if}
-        </div>
-        {#if note}<p class="note">{note}</p>{/if}
-      </div>
-    </div>
-
-    <div class="block">
-      <div class="block-title">
         How should it wake up?
         <Help text="Any input brings it back the moment you touch the mouse or keyboard. 'Cursor moves onto it' keeps it dark while you work on other screens and wakes it only when you move the mouse over to it." />
       </div>
@@ -161,12 +82,6 @@
         ]}
         onchange={(w) => set('wake', w)}
       />
-      {#if rule.wake === 'cursor' && usesPower}
-        <p class="note">
-          If Windows stops seeing this screen while it's powered off, the cursor can't move onto it. Testing power off
-          checks this; if it happens, Pixl uses a black screen for it instead.
-        </p>
-      {/if}
       {#if rule.wake === 'any' && rule.trigger === 'away'}
         <p class="note">
           With this rule, the screen comes back whenever you touch the mouse or keyboard, then turns off again after the
@@ -306,48 +221,6 @@
   }
   .eg {
     color: var(--accent);
-  }
-  .method {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    padding: 12px 14px;
-    border-radius: var(--radius);
-    background: var(--well);
-    border: 1px solid var(--stroke);
-  }
-  .top {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-wrap: wrap;
-  }
-  .grow {
-    flex: 1;
-  }
-  .flow {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-wrap: wrap;
-    font-size: 12.5px;
-    color: var(--text-2);
-  }
-  .step {
-    padding: 2px 8px;
-    border-radius: 4px;
-    border: 1px solid var(--stroke-strong);
-    background: var(--control);
-    color: var(--text);
-  }
-  .step.cur {
-    border-color: var(--accent);
-    color: var(--accent);
-    font-weight: 600;
-  }
-  .step.skip {
-    text-decoration: line-through;
-    opacity: 0.6;
   }
   .note {
     margin: 0;

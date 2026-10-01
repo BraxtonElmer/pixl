@@ -43,7 +43,7 @@
     if (paused) return ['Paused', ''];
     if (s.phase === 'off') {
       return [
-        s.offBy === 'power' ? 'Powered off' : s.offBy === 'black' ? 'Black screen' : 'Off',
+        'Off',
         rule.wake === 'cursor' ? 'Move the cursor here to wake' : 'Move the mouse to wake',
       ];
     }
