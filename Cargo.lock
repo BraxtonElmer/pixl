@@ -2210,6 +2210,7 @@ version = "0.1.0"
 dependencies = [
  "pixl-core",
  "pixl-platform",
+ "windows",
  "windows-sys 0.59.0",
 ]
 

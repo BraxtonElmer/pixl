@@ -27,6 +27,7 @@ export type Config = {
   pauseInFullscreen: boolean;
   respectKeepAwake: boolean;
   keepOnApps: string[];
+  ignoreSoundFrom: string[];
   hotkeys: Hotkeys;
   appearance: Appearance;
   screens: Record<string, ScreenRule>;

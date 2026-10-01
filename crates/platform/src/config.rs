@@ -9,6 +9,19 @@ use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 /// How long a fade lasts when "Fade out first" is on.
 pub const FADE_MS: u64 = 5000;
+/// Music players: their sound doesn't mean someone is watching the screen.
+pub const MUSIC_APPS: [&str; 10] = [
+    "Spotify.exe",
+    "AppleMusic.exe",
+    "iTunes.exe",
+    "TIDAL.exe",
+    "Deezer.exe",
+    "Amazon Music.exe",
+    "foobar2000.exe",
+    "MusicBee.exe",
+    "AIMP.exe",
+    "Winamp.exe",
+];
 /// Shortest and longest timeouts the settings window offers.
 pub const MIN_TIMEOUT_SECS: u32 = 10;
 pub const MAX_TIMEOUT_SECS: u32 = 24 * 60 * 60;
@@ -25,6 +38,9 @@ pub struct Config {
     pub respect_keep_awake: bool,
     /// Every screen stays on while one of these programs is running (exe names).
     pub keep_on_apps: Vec<String>,
+    /// Sound from these programs doesn't count as "something is playing", so
+    /// music alone doesn't keep a screen on (exe names).
+    pub ignore_sound_from: Vec<String>,
     pub hotkeys: Hotkeys,
     pub appearance: Appearance,
     /// Rules per monitor id. Monitors without an entry use the defaults.
@@ -39,6 +55,7 @@ impl Default for Config {
             pause_in_fullscreen: true,
             respect_keep_awake: false,
             keep_on_apps: Vec::new(),
+            ignore_sound_from: MUSIC_APPS.iter().map(|s| s.to_string()).collect(),
             hotkeys: Hotkeys::default(),
             appearance: Appearance::default(),
             screens: BTreeMap::new(),

@@ -36,7 +36,7 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 
 use crate::input::{self, Input};
 use crate::sampler::Sampler;
-use crate::{icon, overlay, watch};
+use crate::{audio, icon, overlay, watch};
 
 const WM_TRAY: u32 = WM_APP + 1;
 
@@ -145,6 +145,7 @@ pub fn run(open_settings_now: bool) {
     }
     allow_dark_menus();
     input::listen_for_keys(hwnd);
+    audio::init();
     unsafe { WTSRegisterSessionNotification(hwnd, NOTIFY_FOR_THIS_SESSION) };
 
     APP.with(|a| {
@@ -308,6 +309,25 @@ impl App {
         }
         let app = c.keep_on_apps.iter().find(|a| self.running.contains(&a.to_lowercase())).cloned();
 
+        // Screens where an app with a window on them is making sound. Only
+        // worked out while some screen is about to turn off.
+        let about_to_turn_off = (0..self.screens.len()).any(|i| {
+            self.screens[i].rule.stay_on_while_playing
+                && self.engine.remaining(i, now).is_some_and(|ms| ms <= PROBE_BEFORE_MS)
+        });
+        let mut with_sound: HashSet<usize> = HashSet::new();
+        if about_to_turn_off {
+            let ignored: HashSet<String> = c.ignore_sound_from.iter().map(|a| a.to_lowercase()).collect();
+            let sounding: HashSet<String> = audio::sounding().into_iter().filter(|n| !ignored.contains(n)).collect();
+            if !sounding.is_empty() {
+                for (mon, names) in pixl_platform::apps::on_screens() {
+                    if names.iter().any(|n| sounding.contains(n)) {
+                        with_sound.insert(mon);
+                    }
+                }
+            }
+        }
+
         let mut out = Vec::with_capacity(self.screens.len());
         for (i, s) in self.screens.iter_mut().enumerate() {
             let held_by = if !c.enabled {
@@ -325,11 +345,18 @@ impl App {
             };
 
             // Is something playing? Only asked right before the screen would
-            // turn off: a thumbnail, then another a second later. If they
-            // differ, the picture is moving and the timer starts over.
+            // turn off: an app on it making sound, or a picture that moves
+            // between two thumbnails a second apart. Either starts the timer
+            // over. (Protected streaming video captures as black, so the
+            // sound is what gives it away.)
             let left = self.engine.remaining(i, now);
             let probing =
                 s.rule.stay_on_while_playing && held_by.is_none() && left.is_some_and(|ms| ms <= PROBE_BEFORE_MS);
+            if probing && with_sound.contains(&s.d.hmonitor) {
+                s.last_change = now;
+                s.probe = None;
+                self.sampler.forget(&s.d.id);
+            }
             match (probing, s.probe) {
                 (true, None) => {
                     self.sampler.forget(&s.d.id);

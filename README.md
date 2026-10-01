@@ -12,9 +12,9 @@ return. Your PC, your apps and your other screens keep running.
 - **Black, not powered off.** On OLED, black pixels are switched off, so a
   black screen protects the panel like turning it off, and it can't leave a
   monitor stuck dark or shuffle your windows. The cursor is hidden too.
-- **Knows when you're watching.** A playing video, a fullscreen game or an
-  app on your keep-on list keeps its screen on, even without touching the
-  mouse.
+- **Knows when you're watching.** A playing video (OTT services too, by
+  their sound), a fullscreen game or an app on your keep-on list keeps its
+  screen on, even without touching the mouse. Music alone doesn't.
 - **Gentle.** Screens fade out over 5 seconds first; touch anything to
   cancel. Any mouse movement or key brings them back, or only moving the
   cursor onto that screen, if you prefer.

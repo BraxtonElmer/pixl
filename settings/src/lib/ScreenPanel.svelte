@@ -104,9 +104,9 @@
         <div class="text">
           <span class="t">
             Stay on while something is playing
-            <Help text="Once the screen is idle, Pixl glances at its picture every 2 seconds. If most of it is changing, like a video or a game, it counts as in use. A clock or a blinking cursor doesn't." />
+            <Help text="Right before the screen would turn off, Pixl checks whether an app on it is playing sound or its picture is moving. Either one starts the timer over. Sound also catches videos that Windows hides from screen capture. Music apps on the ignore list don't count." />
           </span>
-          <span class="muted small">Videos, games, live charts</span>
+          <span class="muted small">Videos, games</span>
         </div>
         <Switch
           checked={rule.stayOnWhilePlaying}

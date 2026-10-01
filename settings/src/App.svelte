@@ -385,6 +385,16 @@
         <section class="card options">
           <div class="row stack">
             <span class="t">
+              Sound that doesn't count as playing
+              <Help text="A screen stays on while an app on it plays sound, if that screen has 'Stay on while something is playing' turned on. Sound from these apps is ignored, so music alone doesn't keep a screen on while you're away." />
+            </span>
+            <AppList apps={config.ignoreSoundFrom} onchange={(a) => setConfig('ignoreSoundFrom', a)} />
+          </div>
+        </section>
+
+        <section class="card options">
+          <div class="row stack">
+            <span class="t">
               Shortcuts
               <Help text="These work anywhere in Windows. Click one and press the keys you want. Backspace removes it." />
             </span>

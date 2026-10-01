@@ -39,9 +39,10 @@ impl Sampler {
     }
 }
 
-fn differs(a: &[u8], b: &[u8]) -> bool {
+/// Share of thumbnail pixels that changed noticeably between two thumbnails.
+pub fn changed_share(a: &[u8], b: &[u8]) -> f64 {
     if a.len() != b.len() {
-        return true;
+        return 1.0;
     }
     let changed = a
         .as_chunks::<4>()
@@ -53,10 +54,20 @@ fn differs(a: &[u8], b: &[u8]) -> bool {
             d > PIXEL_DELTA
         })
         .count();
-    changed as f64 / (W * H) as f64 > CHANGED_SHARE
+    changed as f64 / (W * H) as f64
 }
 
-fn thumbnail(r: Rect) -> Option<Vec<u8>> {
+fn differs(a: &[u8], b: &[u8]) -> bool {
+    changed_share(a, b) > CHANGED_SHARE
+}
+
+/// Average brightness 0-255 of a thumbnail (0 means Windows handed us black).
+pub fn brightness(t: &[u8]) -> f64 {
+    let sum: u64 = t.as_chunks::<4>().0.iter().map(|p| u64::from(p[0]) + u64::from(p[1]) + u64::from(p[2])).sum();
+    sum as f64 / (W * H * 3) as f64
+}
+
+pub fn thumbnail(r: Rect) -> Option<Vec<u8>> {
     unsafe {
         let screen = GetDC(null_mut());
         if screen.is_null() {
