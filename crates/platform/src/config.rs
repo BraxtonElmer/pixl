@@ -38,8 +38,10 @@ pub struct Config {
     pub respect_keep_awake: bool,
     /// Every screen stays on while one of these programs is running (exe names).
     pub keep_on_apps: Vec<String>,
-    /// Sound from these programs doesn't count as "something is playing", so
-    /// music alone doesn't keep a screen on (exe names).
+    /// Sound from known music players (`MUSIC_APPS`) doesn't count as
+    /// "something is playing", so music alone doesn't keep a screen on.
+    pub ignore_music_players: bool,
+    /// More programs whose sound doesn't count, added by the user (exe names).
     pub ignore_sound_from: Vec<String>,
     pub hotkeys: Hotkeys,
     pub appearance: Appearance,
@@ -55,7 +57,8 @@ impl Default for Config {
             pause_in_fullscreen: true,
             respect_keep_awake: false,
             keep_on_apps: Vec::new(),
-            ignore_sound_from: MUSIC_APPS.iter().map(|s| s.to_string()).collect(),
+            ignore_music_players: true,
+            ignore_sound_from: Vec::new(),
             hotkeys: Hotkeys::default(),
             appearance: Appearance::default(),
             screens: BTreeMap::new(),
@@ -239,7 +242,26 @@ impl Config {
     /// A missing file gives defaults; a broken one is kept as `config.json.bad`
     /// so hand edits are never silently lost.
     pub fn load() -> Self {
-        load_json(&Self::path(), true)
+        let mut c: Self = load_json(&Self::path(), true);
+        c.tidy();
+        c
+    }
+
+    /// Earlier versions listed the music players in `ignore_sound_from`;
+    /// they're built in now, so only apps the user added stay there.
+    fn tidy(&mut self) {
+        self.ignore_sound_from.retain(|a| !MUSIC_APPS.iter().any(|m| m.eq_ignore_ascii_case(a)));
+    }
+
+    /// Lower-case exe names whose sound doesn't count as playing.
+    pub fn ignored_sound(&self) -> Vec<String> {
+        let music = if self.ignore_music_players { &MUSIC_APPS[..] } else { &[] };
+        music
+            .iter()
+            .map(|s| s.to_string())
+            .chain(self.ignore_sound_from.iter().cloned())
+            .map(|s| s.to_lowercase())
+            .collect()
     }
 
     pub fn save(&self) -> std::io::Result<()> {
@@ -312,6 +334,20 @@ mod tests {
         // Written back and read again: nothing changes.
         let again: Config = serde_json::from_str(&serde_json::to_string(&c).unwrap()).unwrap();
         assert_eq!(serde_json::to_value(&again).unwrap(), serde_json::to_value(&c).unwrap());
+    }
+
+    #[test]
+    fn music_players_are_built_in() {
+        let mut c: Config =
+            serde_json::from_str(r#"{"ignoreSoundFrom": ["Spotify.exe", "spotify.exe", "obs64.exe", "Winamp.exe"]}"#)
+                .unwrap();
+        c.tidy();
+        assert_eq!(c.ignore_sound_from, ["obs64.exe"]);
+        assert!(c.ignore_music_players);
+        assert!(c.ignored_sound().contains(&"spotify.exe".to_string()));
+        assert!(c.ignored_sound().contains(&"obs64.exe".to_string()));
+        c.ignore_music_players = false;
+        assert_eq!(c.ignored_sound(), ["obs64.exe"]);
     }
 
     #[test]

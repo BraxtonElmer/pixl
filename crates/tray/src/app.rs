@@ -317,7 +317,7 @@ impl App {
         });
         let mut with_sound: HashSet<usize> = HashSet::new();
         if about_to_turn_off {
-            let ignored: HashSet<String> = c.ignore_sound_from.iter().map(|a| a.to_lowercase()).collect();
+            let ignored: HashSet<String> = c.ignored_sound().into_iter().collect();
             let sounding: HashSet<String> = audio::sounding().into_iter().filter(|n| !ignored.contains(n)).collect();
             if !sounding.is_empty() {
                 for (mon, names) in pixl_platform::apps::on_screens() {

@@ -383,10 +383,24 @@
         </section>
 
         <section class="card options">
+          <div class="row">
+            <div class="text">
+              <span class="t">
+                Ignore music players
+                <Help text="A screen stays on while an app on it plays sound, if 'Stay on while something is playing' is on for that screen. With this on, music players don't count, so music alone won't keep a screen on while you're away. Covers Spotify, Apple Music, iTunes, TIDAL, Deezer, Amazon Music, foobar2000, MusicBee, AIMP and Winamp." />
+              </span>
+              <span class="muted small">Music alone won't keep a screen on</span>
+            </div>
+            <Switch
+              checked={config.ignoreMusicPlayers}
+              label="Ignore music players"
+              onchange={(v) => setConfig('ignoreMusicPlayers', v)}
+            />
+          </div>
           <div class="row stack">
             <span class="t">
-              Sound that doesn't count as playing
-              <Help text="A screen stays on while an app on it plays sound, if that screen has 'Stay on while something is playing' turned on. Sound from these apps is ignored, so music alone doesn't keep a screen on while you're away." />
+              Also ignore sound from
+              <Help text="Other apps whose sound shouldn't keep a screen on, like a podcast app or a game launcher that plays music." />
             </span>
             <AppList apps={config.ignoreSoundFrom} onchange={(a) => setConfig('ignoreSoundFrom', a)} />
           </div>
