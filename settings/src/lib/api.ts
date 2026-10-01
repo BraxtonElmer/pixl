@@ -18,7 +18,7 @@ export type HotkeyName = 'turnOffAll' | 'wakeAll' | 'pause';
 export type Hotkeys = Record<HotkeyName, Hotkey | null>;
 
 export type Theme = 'system' | 'light' | 'dark';
-export type Material = 'acrylic' | 'mica' | 'solid';
+export type Material = 'acrylic' | 'solid';
 export type Appearance = { theme: Theme; accent: string; material: Material };
 
 export type Config = {
@@ -57,7 +57,6 @@ export type State = {
   config: Config;
   startWithWindows: boolean;
   systemAccent: string;
-  mica: boolean;
   version: string;
 };
 

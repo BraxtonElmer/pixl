@@ -16,7 +16,6 @@ pub struct State {
     config: Config,
     start_with_windows: bool,
     system_accent: String,
-    mica: bool,
     version: &'static str,
 }
 
@@ -26,7 +25,6 @@ pub fn get_state() -> State {
         config: Config::load(),
         start_with_windows: autostart::is_enabled(),
         system_accent: system::system_accent(),
-        mica: system::supports_mica(),
         version: env!("CARGO_PKG_VERSION"),
     }
 }
@@ -82,7 +80,7 @@ pub fn set_start_with_windows(on: bool) -> Result<bool, String> {
     }
 }
 
-/// Frosted glass, Mica or solid, tinted for the current light/dark theme.
+/// Frosted glass or solid, tinted for the current light/dark theme.
 /// Returns the material the window actually got.
 #[tauri::command]
 pub fn apply_material(window: tauri::WebviewWindow, material: String, dark: bool) -> String {

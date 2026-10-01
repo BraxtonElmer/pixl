@@ -95,7 +95,7 @@
         <div class="text">
           <span class="t">
             Count typing as activity
-            <Help text="When off, only the mouse keeps this screen on and wakes it. Handy if you type on one screen and want another to sleep." />
+            <Help text="When off, only the mouse keeps this screen on, so typing on another screen won't keep it awake. Any key still wakes it once it's off, unless it only wakes when the cursor moves onto it." />
           </span>
         </div>
         <Switch checked={rule.typingCounts} label="Count typing as activity" onchange={(v) => set('typingCounts', v)} />

@@ -4,11 +4,9 @@ use std::path::PathBuf;
 use std::ptr::{null, null_mut};
 
 use pixl_platform::tray;
-use pixl_platform::wide::{from_wide, to_wide};
+use pixl_platform::wide::to_wide;
 use windows_sys::Win32::Foundation::{ERROR_ALREADY_EXISTS, GetLastError};
-use windows_sys::Win32::System::Registry::{
-    HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, RRF_RT_REG_DWORD, RRF_RT_REG_SZ, RegGetValueW,
-};
+use windows_sys::Win32::System::Registry::{HKEY_CURRENT_USER, RRF_RT_REG_DWORD, RegGetValueW};
 use windows_sys::Win32::System::Threading::CreateMutexW;
 use windows_sys::Win32::UI::Shell::ShellExecuteW;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
@@ -59,26 +57,6 @@ pub fn ensure_tray_running() -> bool {
 pub fn tray_exe() -> Option<PathBuf> {
     let me = std::env::current_exe().ok()?;
     ["Pixl.exe", "pixl-tray.exe"].iter().map(|n| me.with_file_name(n)).find(|p| p.exists())
-}
-
-/// Mica needs Windows 11 (build 22000+).
-pub fn supports_mica() -> bool {
-    let key = to_wide(r"SOFTWARE\Microsoft\Windows NT\CurrentVersion");
-    let name = to_wide("CurrentBuild");
-    let mut buf = [0u16; 32];
-    let mut len = size_of_val(&buf) as u32;
-    let rc = unsafe {
-        RegGetValueW(
-            HKEY_LOCAL_MACHINE,
-            key.as_ptr(),
-            name.as_ptr(),
-            RRF_RT_REG_SZ,
-            null_mut(),
-            buf.as_mut_ptr().cast(),
-            &mut len,
-        )
-    };
-    rc == 0 && from_wide(&buf).parse::<u32>().is_ok_and(|b| b >= 22000)
 }
 
 /// The user's Windows accent colour as `#rrggbb`.

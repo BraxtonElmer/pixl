@@ -199,7 +199,7 @@ pub struct Appearance {
     pub theme: String,
     /// Accent colour as `#rrggbb`; empty = the Windows accent colour.
     pub accent: String,
-    /// Window background: "acrylic" (frosted glass), "mica" or "solid".
+    /// Window background: "acrylic" (frosted glass) or "solid".
     pub material: String,
 }
 

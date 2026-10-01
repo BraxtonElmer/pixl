@@ -399,10 +399,9 @@
             />
             <Segmented
               label="Window background"
-              value={config.appearance.material}
+              value={config.appearance.material === 'solid' ? 'solid' : 'acrylic'}
               options={[
                 { value: 'acrylic' as Material, label: 'Frosted glass' },
-                ...(st.mica ? [{ value: 'mica' as Material, label: 'Mica' }] : []),
                 { value: 'solid' as Material, label: 'Solid' },
               ]}
               onchange={(v) => setAppearance('material', v)}

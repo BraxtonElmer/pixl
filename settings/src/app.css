@@ -65,19 +65,6 @@
   color-scheme: dark;
 }
 
-/* Mica: the window itself is tinted by the wallpaper; surfaces go slightly see-through. */
-:root[data-material='mica'] {
-  --bg: transparent;
-  --surface: rgba(255, 255, 255, 0.72);
-  --surface-2: rgba(255, 255, 255, 0.5);
-  --well: rgba(0, 0, 0, 0.035);
-}
-:root[data-material='mica'][data-theme='dark'] {
-  --surface: rgba(255, 255, 255, 0.05);
-  --surface-2: rgba(255, 255, 255, 0.035);
-  --well: rgba(0, 0, 0, 0.18);
-}
-
 /* Frosted glass: a dense grey frost over whatever is behind the window.
    Cards are slightly lighter panes with a thin highlight on the top edge;
    a faint grain gives the frost its texture. No colour washes. */
