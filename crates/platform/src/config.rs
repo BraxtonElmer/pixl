@@ -79,7 +79,7 @@ impl Default for ScreenRule {
         Self {
             enabled: true,
             trigger: TriggerSetting::Pc,
-            timeout_secs: 5 * 60,
+            timeout_secs: 30 * 60,
             wake: WakeSetting::Any,
             typing_counts: true,
             stay_on_while_playing: true,
@@ -279,7 +279,7 @@ mod tests {
             "hotkeys": {"turnOffAll": {"ctrl": true, "alt": true, "shift": false, "win": false, "key": 79},
                         "wakeAll": null, "pause": {"ctrl": true, "alt": false, "shift": true, "win": false, "key": 80}},
             "appearance": {"theme": "dark", "accent": "#0f7b6c", "material": "solid"},
-            "screens": {"MSI4CC2-1": {"enabled": true, "trigger": "away", "timeoutSecs": 1800, "method": "power",
+            "screens": {"MSI4CC2-1": {"enabled": true, "trigger": "away", "timeoutSecs": 2700, "method": "power",
                         "wake": "cursor", "typingCounts": false, "stayOnWhilePlaying": false, "fade": false}}
         }"##;
         let c: Config = serde_json::from_str(sent).unwrap();
@@ -289,7 +289,7 @@ mod tests {
         assert_eq!(c.hotkeys.pause.map(|h| h.label()).as_deref(), Some("Ctrl+Shift+P"));
         assert_eq!(c.appearance.material, "solid");
         let r = c.rule_for("MSI4CC2-1");
-        assert_eq!((r.trigger, r.wake, r.timeout_secs), (TriggerSetting::Away, WakeSetting::Cursor, 1800));
+        assert_eq!((r.trigger, r.wake, r.timeout_secs), (TriggerSetting::Away, WakeSetting::Cursor, 2700));
         assert!(!r.typing_counts && !r.stay_on_while_playing && !r.fade);
 
         // Written back and read again: nothing changes.

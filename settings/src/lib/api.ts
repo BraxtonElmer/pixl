@@ -63,7 +63,7 @@ export type State = {
 export const DEFAULT_RULE: ScreenRule = {
   enabled: true,
   trigger: 'pc',
-  timeoutSecs: 300,
+  timeoutSecs: 1800,
   wake: 'any',
   typingCounts: true,
   stayOnWhilePlaying: true,

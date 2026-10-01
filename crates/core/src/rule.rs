@@ -39,7 +39,7 @@ impl Default for Rule {
         Self {
             enabled: true,
             trigger: Trigger::PcIdle,
-            timeout_ms: 5 * 60 * 1000,
+            timeout_ms: 30 * 60 * 1000,
             wake: Wake::AnyInput,
             typing_counts: true,
             stay_on_while_playing: true,
