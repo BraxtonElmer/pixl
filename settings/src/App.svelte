@@ -345,14 +345,14 @@
           <div class="row">
             <div class="text">
               <span class="t">
-                Keep on during fullscreen
-                <Help text="While a game, video or presentation fills a screen, that screen never turns off, even if you're only using a controller." />
+                Keep on while an app is fullscreen
+                <Help text="While a game, presentation or any other app fills a screen, that screen stays on, even when it's quiet and you're not touching the mouse or keyboard (Pixl can't see controller input). Videos in a normal window are handled by each screen's 'Stay on while something is playing'." />
               </span>
-              <span class="muted small">Games, videos, presentations</span>
+              <span class="muted small">Games with a controller, presentations</span>
             </div>
             <Switch
               checked={config.pauseInFullscreen}
-              label="Keep screens on during fullscreen"
+              label="Keep screens on while an app is fullscreen"
               onchange={(v) => setConfig('pauseInFullscreen', v)}
             />
           </div>
