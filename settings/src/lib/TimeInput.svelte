@@ -9,6 +9,8 @@
   let unit = $state<Unit>('min');
   let text = $state('');
   let editing = $state(false);
+  // The time before typing started, for Escape to go back to.
+  let before = 0;
 
   // Follow outside changes (another screen selected, slider moved) unless the user is typing.
   $effect(() => {
@@ -26,6 +28,12 @@
       return;
     }
     onchange(clampSecs(n * UNIT_SECS[unit]));
+  }
+
+  /** Save while typing too, so closing the window doesn't lose a typed time. */
+  function typed() {
+    const n = parseFloat(text.replace(',', '.'));
+    if (Number.isFinite(n) && n > 0) onchange(clampSecs(n * UNIT_SECS[unit]));
   }
 
   function setUnit(u: Unit) {
@@ -54,13 +62,18 @@
       inputmode="decimal"
       aria-label="Type the time"
       bind:value={text}
-      onfocus={() => (editing = true)}
+      onfocus={() => {
+        editing = true;
+        before = secs;
+      }}
+      oninput={typed}
       onblur={commit}
       onkeydown={(e) => {
         if (e.key === 'Enter') e.currentTarget.blur();
         if (e.key === 'Escape') {
           editing = false;
-          text = String(+(secs / UNIT_SECS[unit]).toFixed(2));
+          onchange(before);
+          text = String(+(before / UNIT_SECS[unit]).toFixed(2));
           e.currentTarget.blur();
         }
       }}

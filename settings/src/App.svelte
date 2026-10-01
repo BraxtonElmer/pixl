@@ -131,31 +131,53 @@
     })();
     const p = setInterval(poll, 1000);
     const t = setInterval(() => (now = Date.now()), 250);
-    // Pick up changes made from the tray menu when coming back to the window.
-    const focus = () => api.state().then((s) => st && (st.config = s.config, st.startWithWindows = s.startWithWindows));
+    // Pick up changes made from the tray menu when coming back to the window,
+    // but never over a change of ours that hasn't been written yet.
+    const focus = async () => {
+      if (dirty) return;
+      const s = await api.state();
+      if (st && !dirty) {
+        st.config = s.config;
+        st.startWithWindows = s.startWithWindows;
+      }
+    };
     window.addEventListener('focus', focus);
+    // Write any waiting change before the window closes.
+    const closing = getCurrentWindow().onCloseRequested(async () => {
+      await flush();
+    });
     return () => {
       clearInterval(p);
       clearInterval(t);
       window.removeEventListener('focus', focus);
+      closing.then((off) => off());
     };
   });
 
   // ---- saving ----
 
+  // Changes are written a moment after the last one (dragging the slider makes
+  // many), and straight away when the window closes.
   let saveTimer: ReturnType<typeof setTimeout> | undefined;
+  let dirty = false;
 
   function save() {
+    dirty = true;
     clearTimeout(saveTimer);
-    saveTimer = setTimeout(async () => {
-      if (!st) return;
-      try {
-        await api.saveConfig($state.snapshot(st.config) as Config);
-        error = '';
-      } catch (e) {
-        error = String(e);
-      }
-    }, 120);
+    saveTimer = setTimeout(flush, 120);
+  }
+
+  async function flush() {
+    clearTimeout(saveTimer);
+    if (!st || !dirty) return;
+    dirty = false;
+    try {
+      await api.saveConfig($state.snapshot(st.config) as Config);
+      error = '';
+    } catch (e) {
+      dirty = true;
+      error = String(e);
+    }
   }
 
   function setRule(id: string, rule: ScreenRule) {
