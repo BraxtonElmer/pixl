@@ -14,7 +14,7 @@ pub const MIN_TIMEOUT_SECS: u32 = 10;
 pub const MAX_TIMEOUT_SECS: u32 = 24 * 60 * 60;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
-#[serde(default)]
+#[serde(default, rename_all = "camelCase")]
 pub struct Config {
     pub version: u32,
     pub enabled: bool,

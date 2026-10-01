@@ -83,7 +83,11 @@ fn run(job: Job) -> Done {
 /// Can this monitor be powered off, why not, and which value means "off" for it.
 fn probe(hmonitor: usize) -> (bool, &'static str, u32) {
     let Some(m) = Physical::open(hmonitor) else {
-        return (false, "Windows can't reach this screen's controls. Docks, adapters and TVs often block them.", POWER_OFF);
+        return (
+            false,
+            "Windows can't reach this screen's controls. Docks, adapters and TVs often block them.",
+            POWER_OFF,
+        );
     };
     // Reading the power mode is quick and the surest sign. Monitors need a
     // moment between commands, and some drop the first one after waking.
@@ -97,6 +101,13 @@ fn probe(hmonitor: usize) -> (bool, &'static str, u32) {
     let caps = m.capabilities();
     let off = ddc::off_value(caps.as_deref());
     if answers || caps.as_deref().is_some_and(|c| ddc::supports(c, VCP_POWER)) {
+        // 05 is the monitor's own power button: it drops off the cable and only
+        // the button brings it back, so it's no use for turning off when idle.
+        if off == 0x05 {
+            let note = "This screen can only switch itself fully off, like its power button, and then only the \
+                        button turns it back on. Pixl covers it with black instead.";
+            return (false, note, off);
+        }
         return (true, "", off);
     }
     let note = if caps.is_some() {

@@ -357,7 +357,7 @@ impl App {
         let fullscreen = if c.pause_in_fullscreen { watch::fullscreen_monitor() } else { None };
         let awake = c.respect_keep_awake && watch::display_kept_awake();
         if !c.keep_on_apps.is_empty() && now >= self.next_apps_scan {
-            self.running = watch::running_programs();
+            self.running = pixl_platform::apps::running();
             self.next_apps_scan = now + APPS_EVERY_MS;
         } else if c.keep_on_apps.is_empty() {
             self.running.clear();
@@ -436,16 +436,18 @@ impl App {
         let now = self.now();
         let Some(s) = self.screens.get_mut(i) else { return };
         self.sampler.forget(&s.d.id);
-        let can_power = matches!(s.support, PowerSupport::Works | PowerSupport::Untested);
+        // Most monitors drop off the cable when powered down and then only their
+        // button wakes them, so Automatic powers off only screens that passed the
+        // test. "Power off only" is the user opting in, so it tries untested ones.
+        let can_power = match s.rule.method {
+            Method::Power => matches!(s.support, PowerSupport::Works | PowerSupport::Untested),
+            _ => s.support == PowerSupport::Works,
+        };
         match (s.rule.method, can_power) {
-            (Method::Black, _) | (Method::Auto, false) => {
+            // A screen that can't be powered off is always covered, so it's never left lit.
+            (Method::Black, _) | (_, false) => {
                 overlay::show(&s.d.id, s.d.px, now, 0);
                 s.off_by = Some(OffBy::Black);
-            }
-            (Method::Power, false) => {
-                // Power off only, and it can't: leave the screen as it is.
-                overlay::hide(&s.d.id);
-                s.off_by = None;
             }
             (method, true) => {
                 // The black cover stays up under a powered-off screen, so it

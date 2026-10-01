@@ -12,14 +12,15 @@ use std::ptr::{null, null_mut};
 
 use pixl_platform::display::Rect;
 use pixl_platform::wide::to_wide;
-use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
+use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, WPARAM};
 use windows_sys::Win32::Graphics::Gdi::{BLACK_BRUSH, GetStockObject};
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExW, DefWindowProcW, DestroyWindow, GWL_EXSTYLE, GetWindowLongPtrW, HWND_TOPMOST, LWA_ALPHA,
-    MA_NOACTIVATE, RegisterClassW, SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SetCursor,
-    SetLayeredWindowAttributes, SetWindowLongPtrW, SetWindowPos, ShowWindow, WM_MOUSEACTIVATE, WM_SETCURSOR, WNDCLASSW,
-    WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_POPUP,
+    CreateWindowExW, DefWindowProcW, DestroyWindow, GWL_EXSTYLE, GetCursorPos, GetWindowLongPtrW, HWND_TOPMOST,
+    LWA_ALPHA, MA_NOACTIVATE, RegisterClassW, SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SetCursor,
+    SetCursorPos, SetLayeredWindowAttributes, SetWindowLongPtrW, SetWindowPos, ShowWindow, WM_MOUSEACTIVATE,
+    WM_SETCURSOR, WNDCLASSW, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_EX_TRANSPARENT,
+    WS_POPUP,
 };
 
 const CLASS: &str = "PixlBlack";
@@ -114,8 +115,24 @@ pub fn finish(id: &str) {
                 let ex = GetWindowLongPtrW(cover.hwnd, GWL_EXSTYLE);
                 SetWindowLongPtrW(cover.hwnd, GWL_EXSTYLE, ex & !(WS_EX_TRANSPARENT as isize));
             }
+            hide_cursor_over(cover.rect);
         }
     });
+}
+
+/// A cursor resting on a black screen would stay lit and burn in. Windows
+/// only asks the window under the cursor which cursor to show when the mouse
+/// moves, so put it back where it already is: that counts as a move for
+/// Windows (but not as the user's input), and the cover answers "none".
+fn hide_cursor_over(rect: Rect) {
+    let mut pt = POINT { x: 0, y: 0 };
+    if unsafe { GetCursorPos(&mut pt) } == 0 || !rect.contains(pt.x, pt.y) {
+        return;
+    }
+    unsafe {
+        SetCursor(null_mut());
+        SetCursorPos(pt.x, pt.y);
+    }
 }
 
 pub fn hide(id: &str) {

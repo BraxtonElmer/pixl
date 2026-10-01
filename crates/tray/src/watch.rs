@@ -1,21 +1,18 @@
 //! Things that keep screens on regardless of input: a fullscreen game, an app
 //! asking Windows to keep the display awake, a program on the keep-on list.
 
-use std::collections::HashSet;
-
 use pixl_platform::wide::from_wide;
-use windows_sys::Win32::Foundation::{CloseHandle, INVALID_HANDLE_VALUE, RECT};
+use windows_sys::Win32::Foundation::RECT;
 use windows_sys::Win32::Graphics::Gdi::{
     GetMonitorInfoW, HMONITOR, MONITOR_DEFAULTTONEAREST, MONITOR_DEFAULTTONULL, MONITORINFO, MonitorFromWindow,
 };
-use windows_sys::Win32::System::Diagnostics::ToolHelp::{
-    CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW, TH32CS_SNAPPROCESS,
-};
 use windows_sys::Win32::System::Power::{CallNtPowerInformation, ES_DISPLAY_REQUIRED, SystemExecutionState};
 use windows_sys::Win32::UI::Shell::{
-    QUNS_BUSY, QUNS_PRESENTATION_MODE, QUNS_RUNNING_D3D_FULL_SCREEN, SHQueryUserNotificationState,
+    QUNS_PRESENTATION_MODE, QUNS_RUNNING_D3D_FULL_SCREEN, SHQueryUserNotificationState,
 };
-use windows_sys::Win32::UI::WindowsAndMessaging::{GetClassNameW, GetForegroundWindow, GetWindowRect};
+use windows_sys::Win32::UI::WindowsAndMessaging::{
+    GetClassNameW, GetForegroundWindow, GetWindowRect, GetWindowThreadProcessId, IsZoomed,
+};
 
 /// The monitor showing the window that has keyboard focus.
 pub fn focus_monitor() -> Option<usize> {
@@ -40,16 +37,31 @@ pub fn fullscreen_monitor() -> Option<usize> {
     if matches!(class.as_str(), "Progman" | "WorkerW" | "Shell_TrayWnd" | "Shell_SecondaryTrayWnd" | "PixlBlack") {
         return None;
     }
+    // Our own windows never count: the black cover is itself a topmost
+    // window filling a screen, which Windows reports as "fullscreen".
+    let mut pid = 0;
+    unsafe { GetWindowThreadProcessId(hwnd, &mut pid) };
+    if pid == std::process::id() {
+        return None;
+    }
     let mon = unsafe { MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST) };
 
+    // Exclusive-fullscreen games and presentation mode are reported by the
+    // shell. Its general "busy" state isn't used: any topmost window covering
+    // a screen sets it, including our cover.
     let mut state = 0;
     let shell_says = unsafe { SHQueryUserNotificationState(&mut state) } == 0
-        && matches!(state, QUNS_BUSY | QUNS_RUNNING_D3D_FULL_SCREEN | QUNS_PRESENTATION_MODE);
+        && matches!(state, QUNS_RUNNING_D3D_FULL_SCREEN | QUNS_PRESENTATION_MODE);
     if shell_says {
         return Some(mon as usize);
     }
 
-    // Borderless-windowed games aren't reported by the shell.
+    // Borderless-windowed games and fullscreen videos: the app in front covers its
+    // whole screen. A maximized window can too (with an auto-hiding taskbar), but
+    // that's ordinary work, not a game.
+    if unsafe { IsZoomed(hwnd) } != 0 {
+        return None;
+    }
     let mut w: RECT = unsafe { std::mem::zeroed() };
     if unsafe { GetWindowRect(hwnd, &mut w) } == 0 {
         return None;
@@ -77,22 +89,4 @@ pub fn display_kept_awake() -> bool {
         )
     };
     rc == 0 && state & ES_DISPLAY_REQUIRED != 0
-}
-
-/// Lower-case exe names of every running process.
-pub fn running_programs() -> HashSet<String> {
-    let mut names = HashSet::new();
-    let snap = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) };
-    if snap == INVALID_HANDLE_VALUE {
-        return names;
-    }
-    let mut e: PROCESSENTRY32W = unsafe { std::mem::zeroed() };
-    e.dwSize = size_of::<PROCESSENTRY32W>() as u32;
-    let mut ok = unsafe { Process32FirstW(snap, &mut e) } != 0;
-    while ok {
-        names.insert(from_wide(&e.szExeFile).to_lowercase());
-        ok = unsafe { Process32NextW(snap, &mut e) } != 0;
-    }
-    unsafe { CloseHandle(snap) };
-    names
 }
