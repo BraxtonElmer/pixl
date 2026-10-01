@@ -5,6 +5,7 @@ mod app;
 mod audio;
 mod icon;
 mod input;
+mod log;
 mod overlay;
 mod sampler;
 mod watch;

@@ -110,6 +110,22 @@ impl Slot {
     }
 }
 
+/// How often the tray app needs to look, in milliseconds (see [`Engine::next_wait`]).
+#[derive(Clone, Copy, Debug)]
+pub struct Pace {
+    /// While something is about to happen: fading, or the last moments of a timer.
+    pub fast: u64,
+    /// While a screen is dark (input wakes it as an event; this only catches
+    /// things like a fullscreen game starting).
+    pub dark: u64,
+    /// While a screen uses "not using this screen", to follow the cursor.
+    pub away: u64,
+    /// Never sleep longer than this (a fullscreen game ending, a keep-on app quitting).
+    pub max: u64,
+    /// Look this long before a timer runs out, to check for a playing video.
+    pub probe_lead: u64,
+}
+
 #[derive(Debug, Default)]
 pub struct Engine {
     slots: Vec<Slot>,
@@ -170,6 +186,36 @@ impl Engine {
         let s = self.slots.get(i)?;
         (s.rule.enabled && s.phase == Phase::On)
             .then(|| s.rule.timeout_ms.saturating_sub(now.saturating_sub(s.last_used)))
+    }
+
+    /// How long the tray app can sleep before the next step is worth doing.
+    ///
+    /// Nothing can turn a screen off before its timer runs out, and input
+    /// only ever pushes that further away, so with every screen on Pixl can
+    /// sleep until the earliest timer (less `probe_lead`, to look for a
+    /// playing video first). Input that wakes a dark screen arrives as an
+    /// event, so dark screens only need the occasional check.
+    pub fn next_wait(&self, now: u64, pace: &Pace) -> u64 {
+        let mut wait = pace.max;
+        for s in self.slots.iter().filter(|s| s.rule.enabled) {
+            let w = match s.phase {
+                // The fade has to end on time and be easy to cancel.
+                Phase::Fading { .. } => pace.fast,
+                Phase::Off => pace.dark,
+                Phase::On => {
+                    let left = s.rule.timeout_ms.saturating_sub(now.saturating_sub(s.last_used));
+                    let until_probe = left.saturating_sub(pace.probe_lead);
+                    let mut w = if until_probe == 0 { pace.fast } else { until_probe };
+                    // "Not using this screen" has to notice which screen the cursor is on.
+                    if s.rule.trigger == Trigger::AwayFromScreen {
+                        w = w.min(pace.away);
+                    }
+                    w
+                }
+            };
+            wait = wait.min(w);
+        }
+        wait.clamp(pace.fast, pace.max)
     }
 
     /// Advance every screen by one tick.
@@ -532,5 +578,124 @@ mod tests {
         s.run(MIN + 300);
         assert_eq!(s.e.wake_all(s.now), vec![Action::CancelFade(0), Action::Wake(1)]);
         assert!(s.run(MIN - 1000).is_empty());
+    }
+
+    // ---- sleeping between steps ----
+
+    const PACE: Pace = Pace { fast: 250, dark: 5000, away: 2000, max: 30_000, probe_lead: 2500 };
+    /// A pace that never caps the sleep, to see the raw deadline.
+    const LONG: Pace = Pace { fast: 250, dark: 5000, away: 2000, max: u64::MAX, probe_lead: 2500 };
+
+    impl Sim {
+        /// Step only when `next_wait` says to, the way the tray app does,
+        /// with `input` (time, screen) arriving in between. Returns each
+        /// action with the time it happened, and how many steps it took.
+        fn run_sparse(&mut self, ms: u64, pace: &Pace, input: &[(u64, usize)]) -> (Vec<(u64, Action)>, usize) {
+            let mut all = Vec::new();
+            let mut steps = 0;
+            let start = self.now;
+            let end = start + ms;
+            let mut pending = input.iter().copied().peekable();
+            while self.now < end {
+                let next = self.now + self.e.next_wait(self.now, pace);
+                // Input between steps: Windows remembers it; the cursor is wherever it was moved.
+                while let Some(&(t, on)) = pending.peek() {
+                    if start + t > next {
+                        break;
+                    }
+                    self.mouse = start + t;
+                    self.cursor = Some(on);
+                    pending.next();
+                }
+                self.now = next.min(end);
+                steps += 1;
+                all.extend(self.step().into_iter().map(|a| (self.now - start, a)));
+            }
+            (all, steps)
+        }
+    }
+
+    const HALF_HOUR: u64 = 30 * MIN;
+
+    #[test]
+    fn sleeps_until_just_before_the_timer_runs_out() {
+        let r = Rule { timeout_ms: HALF_HOUR, ..rule(Trigger::PcIdle, Wake::AnyInput) };
+        let s = Sim::new(&[r]);
+        assert_eq!(s.e.next_wait(s.now, &LONG), HALF_HOUR - 2500);
+        // Capped, so a fullscreen game ending or a keep-on app quitting is seen.
+        assert_eq!(s.e.next_wait(s.now, &PACE), 30_000);
+        // Inside the last stretch: look closely.
+        assert_eq!(s.e.next_wait(s.now + HALF_HOUR - 1000, &PACE), 250);
+    }
+
+    #[test]
+    fn the_earliest_screen_sets_the_wait() {
+        let a = Rule { timeout_ms: HALF_HOUR, ..rule(Trigger::PcIdle, Wake::AnyInput) };
+        let b = Rule { timeout_ms: 2 * MIN, ..a };
+        let s = Sim::new(&[a, b]);
+        assert_eq!(s.e.next_wait(s.now, &LONG), 2 * MIN - 2500);
+    }
+
+    #[test]
+    fn away_screens_follow_the_cursor() {
+        let r = Rule { timeout_ms: HALF_HOUR, ..rule(Trigger::AwayFromScreen, Wake::CursorEnters) };
+        let s = Sim::new(&[r]);
+        assert_eq!(s.e.next_wait(s.now, &LONG), 2000);
+    }
+
+    #[test]
+    fn disabled_screens_need_nothing() {
+        let s = Sim::new(&[Rule { enabled: false, ..rule(Trigger::AwayFromScreen, Wake::AnyInput) }]);
+        assert_eq!(s.e.next_wait(s.now, &PACE), 30_000);
+    }
+
+    #[test]
+    fn fading_is_watched_closely_and_dark_screens_rarely() {
+        let r = Rule { fade_ms: 5000, ..rule(Trigger::PcIdle, Wake::AnyInput) };
+        let mut s = Sim::new(&[r]);
+        s.run(MIN + 100);
+        assert!(matches!(s.e.phase(0), Phase::Fading { .. }));
+        assert_eq!(s.e.next_wait(s.now, &PACE), 250);
+        s.run(5000);
+        assert_eq!(s.e.phase(0), Phase::Off);
+        assert_eq!(s.e.next_wait(s.now, &PACE), 5000);
+    }
+
+    #[test]
+    fn sparse_steps_turn_off_on_time() {
+        let r = Rule { timeout_ms: HALF_HOUR, ..rule(Trigger::PcIdle, Wake::AnyInput) };
+        let mut s = Sim::new(&[r]);
+        let (actions, steps) = s.run_sparse(HALF_HOUR + MIN, &PACE, &[]);
+        assert_eq!(actions.len(), 1);
+        let (at, a) = actions[0];
+        assert_eq!(a, Action::TurnOff(0));
+        assert!((HALF_HOUR..=HALF_HOUR + 250).contains(&at), "turned off at {at}");
+        // About one step per 30 s, plus the last few seconds closely: not 7,200 steps.
+        assert!(steps < 90, "{steps} steps");
+    }
+
+    #[test]
+    fn input_during_a_long_sleep_pushes_the_timer_back() {
+        let r = Rule { timeout_ms: HALF_HOUR, ..rule(Trigger::PcIdle, Wake::AnyInput) };
+        let mut s = Sim::new(&[r]);
+        // Used the mouse 20 minutes in, between two steps.
+        let (actions, _) = s.run_sparse(HALF_HOUR + 25 * MIN, &PACE, &[(20 * MIN + 7, 0)]);
+        assert_eq!(actions.len(), 1);
+        let (at, _) = actions[0];
+        let expected = 20 * MIN + 7 + HALF_HOUR;
+        assert!((expected..=expected + 250).contains(&at), "turned off at {at}, expected {expected}");
+    }
+
+    #[test]
+    fn sparse_away_screen_still_turns_off_while_working_elsewhere() {
+        let a = Rule { timeout_ms: HALF_HOUR, ..rule(Trigger::PcIdle, Wake::AnyInput) };
+        let b = Rule { timeout_ms: 5 * MIN, ..rule(Trigger::AwayFromScreen, Wake::CursorEnters) };
+        let mut s = Sim::new(&[a, b]);
+        // Busy on screen 0 every 10 seconds for 10 minutes.
+        let input: Vec<(u64, usize)> = (1..60).map(|k| (k * 10_000, 0)).collect();
+        let (actions, _) = s.run_sparse(10 * MIN, &PACE, &input);
+        assert_eq!(actions.iter().map(|(_, a)| *a).collect::<Vec<_>>(), vec![Action::TurnOff(1)]);
+        let (at, _) = actions[0];
+        assert!((5 * MIN..=5 * MIN + 2000).contains(&at), "turned off at {at}");
     }
 }

@@ -5,5 +5,5 @@
 mod engine;
 mod rule;
 
-pub use engine::{Action, Engine, Inputs, Phase, ScreenInputs};
+pub use engine::{Action, Engine, Inputs, Pace, Phase, ScreenInputs};
 pub use rule::{Rule, Trigger, Wake};

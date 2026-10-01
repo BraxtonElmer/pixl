@@ -7,7 +7,7 @@ use std::cell::RefCell;
 use std::collections::HashSet;
 use std::ptr::{null, null_mut};
 
-use pixl_core::{Action, Engine, Inputs, Phase, ScreenInputs};
+use pixl_core::{Action, Engine, Inputs, Pace, Phase, ScreenInputs};
 use pixl_platform::config::{Config, FADE_MS, Hotkey, ScreenRule, TriggerSetting};
 use pixl_platform::display::{self, Display};
 use pixl_platform::status::{ScreenPhase, ScreenStatus, Status, unix_ms};
@@ -36,19 +36,20 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 
 use crate::input::{self, Input};
 use crate::sampler::Sampler;
-use crate::{audio, icon, overlay, watch};
+use crate::{audio, icon, log, overlay, watch};
 
 const WM_TRAY: u32 = WM_APP + 1;
 
 const TIMER_TICK: usize = 1;
 const TIMER_FADE: usize = 2;
 const TIMER_REDETECT: usize = 3;
-/// Check once a second normally; four times a second while a screen is about
-/// to turn off, fading or black, so waking and cancelling feel instant.
-const TICK_SLOW_MS: u32 = 1000;
-const TICK_FAST_MS: u32 = 250;
-/// Speed up this long before a screen would turn off.
-const FAST_BEFORE_MS: u64 = 3000;
+/// How often to look (see `Engine::next_wait`). With every screen on, Pixl
+/// sleeps until just before the earliest timer runs out, but at most `max`.
+const PACE: Pace = Pace { fast: 250, dark: 5000, away: 2000, max: 30_000, probe_lead: PROBE_BEFORE_MS };
+/// While the settings window is open its countdowns need a fresh look every second.
+const WATCHED_MS: u64 = 1000;
+/// Input arriving as events (a dark screen) steps at most this often.
+const INPUT_STEP_MS: u64 = 100;
 const FADE_FRAME_MS: u32 = 30;
 
 const HOTKEY_OFF: i32 = 1;
@@ -106,7 +107,8 @@ struct App {
     next_apps_scan: u64,
     hotkeys_taken: Vec<String>,
     ticks: u64,
-    tick_ms: u32,
+    /// When the last step ran, to keep input events from stepping too often.
+    last_tick: u64,
     icon: HICON,
     taskbar_created: u32,
 }
@@ -143,8 +145,8 @@ pub fn run(open_settings_now: bool) {
     if hwnd.is_null() {
         return;
     }
+    log::init();
     allow_dark_menus();
-    input::listen_for_keys(hwnd);
     audio::init();
     unsafe { WTSRegisterSessionNotification(hwnd, NOTIFY_FOR_THIS_SESSION) };
 
@@ -163,7 +165,7 @@ pub fn run(open_settings_now: bool) {
             next_apps_scan: 0,
             hotkeys_taken: Vec::new(),
             ticks: 0,
-            tick_ms: TICK_SLOW_MS,
+            last_tick: 0,
             icon: null_mut(),
             taskbar_created: taskbar_created_message(),
         });
@@ -174,7 +176,7 @@ pub fn run(open_settings_now: bool) {
         app.tray(NIM_ADD);
         app.write_status();
     });
-    unsafe { SetTimer(hwnd, TIMER_TICK, TICK_SLOW_MS, None) };
+    with_app(|a| a.pace(input::now()));
     if open_settings_now {
         open_settings();
     }
@@ -241,13 +243,19 @@ impl App {
         let list: Vec<_> = self.screens.iter().map(|s| (s.d.id.clone(), s.rule.to_rule())).collect();
         let actions = self.engine.set_screens(&list, now);
         self.apply(actions);
+        // Rules may have changed (a shorter timer): sleep to match.
+        self.pace(now);
     }
 
     // ---- the tick ----
 
     fn tick(&mut self) {
         let now = self.now();
+        if log::enabled() {
+            log::line("step");
+        }
         self.ticks += 1;
+        self.last_tick = now;
         if let Some(Pause::Until(t)) = self.pause
             && now >= t
         {
@@ -274,24 +282,44 @@ impl App {
             self.apply(actions);
         }
 
-        if self.ticks.is_multiple_of(4) {
-            overlay::raise();
-        }
+        // Keep the black covers above windows that made themselves topmost.
+        overlay::raise();
         if now < self.watch_until {
             self.write_status();
         }
         self.pace(now);
     }
 
-    /// Pick the tick speed: fast only while something is about to happen.
+    /// Sleep until the next step is worth doing, and listen for input as it
+    /// happens only while something needs it.
     fn pace(&mut self, now: u64) {
-        let busy = (0..self.engine.len()).any(|i| {
-            self.engine.phase(i) != Phase::On || self.engine.remaining(i, now).is_some_and(|ms| ms <= FAST_BEFORE_MS)
-        });
-        let ms = if busy { TICK_FAST_MS } else { TICK_SLOW_MS };
-        if ms != self.tick_ms {
-            self.tick_ms = ms;
-            unsafe { SetTimer(self.hwnd, TIMER_TICK, ms, None) };
+        let dark = (0..self.engine.len()).any(|i| self.engine.phase(i) != Phase::On);
+        // Key presses are only told apart from the mouse when a setting cares.
+        let keys = dark
+            || self
+                .screens
+                .iter()
+                .any(|s| s.rule.enabled && (!s.rule.typing_counts || s.rule.trigger == TriggerSetting::Away));
+        self.input.listen(self.hwnd, keys, dark);
+
+        let mut wait = self.engine.next_wait(now, &PACE);
+        if now < self.watch_until {
+            wait = wait.min(WATCHED_MS);
+        }
+        if let Some(Pause::Until(t)) = self.pause {
+            wait = wait.min(t.saturating_sub(now).max(PACE.fast));
+        }
+        if log::enabled() {
+            log::line(format!("sleep {wait} ms  keys={keys} mouse={dark}"));
+        }
+        unsafe { SetTimer(self.hwnd, TIMER_TICK, wait as u32, None) };
+    }
+
+    /// Input arrived as an event (a dark screen is waiting for it): step now,
+    /// but not for every one of the hundreds a moving mouse sends.
+    fn input_event(&mut self) {
+        if self.now().saturating_sub(self.last_tick) >= INPUT_STEP_MS {
+            self.tick();
         }
     }
 
@@ -383,6 +411,12 @@ impl App {
     }
 
     fn apply(&mut self, actions: Vec<Action>) {
+        if actions.is_empty() {
+            return;
+        }
+        if log::enabled() {
+            log::line(format!("{actions:?}"));
+        }
         let now = self.now();
         let mut fading = false;
         for a in actions {
@@ -417,6 +451,8 @@ impl App {
         if self.now() < self.watch_until {
             self.write_status();
         }
+        // A screen may have gone dark or come back: listen and sleep to match.
+        self.pace(self.now());
     }
 
     fn wake_all(&mut self) {
@@ -438,6 +474,7 @@ impl App {
         if pause.is_some() {
             self.wake_all();
         }
+        self.pace(self.now());
         self.tray(NIM_MODIFY);
         self.write_status();
     }
@@ -732,7 +769,23 @@ fn run_command(hwnd: HWND, cmd: usize) {
 unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     match msg {
         WM_INPUT => {
-            with_app(|a| a.input.key_pressed());
+            match input::raw_kind(lparam) {
+                input::Raw::Key => {
+                    with_app(|a| {
+                        a.input.key_pressed();
+                        if a.any_off() {
+                            a.input_event();
+                        }
+                    });
+                }
+                input::Raw::Mouse => {
+                    with_app(|a| {
+                        a.input.mouse_moved();
+                        a.input_event();
+                    });
+                }
+                input::Raw::Other => {}
+            }
             unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
         }
         WM_TIMER if wparam == TIMER_TICK => {
@@ -768,8 +821,12 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
         }
         MSG_WATCH => {
             with_app(|a| {
+                let first = a.now() >= a.watch_until;
                 a.watch_until = a.now() + WATCH_MS;
                 a.write_status();
+                if first {
+                    a.pace(a.now());
+                }
             });
             0
         }
