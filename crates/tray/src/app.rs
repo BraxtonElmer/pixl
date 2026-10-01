@@ -43,17 +43,22 @@ const WM_TRAY: u32 = WM_APP + 1;
 const TIMER_TICK: usize = 1;
 const TIMER_FADE: usize = 2;
 const TIMER_REDETECT: usize = 3;
-const TICK_MS: u32 = 250;
+/// Check once a second normally; four times a second while a screen is about
+/// to turn off, fading or black, so waking and cancelling feel instant.
+const TICK_SLOW_MS: u32 = 1000;
+const TICK_FAST_MS: u32 = 250;
+/// Speed up this long before a screen would turn off.
+const FAST_BEFORE_MS: u64 = 3000;
 const FADE_FRAME_MS: u32 = 30;
 
 const HOTKEY_OFF: i32 = 1;
 const HOTKEY_WAKE: i32 = 2;
 const HOTKEY_PAUSE: i32 = 3;
 
-/// Look at an idle screen's picture this often.
-const SAMPLE_EVERY_MS: u64 = 2000;
-/// ...but only once it has been unused this long.
-const SAMPLE_AFTER_IDLE_MS: u64 = 5000;
+/// "Stay on while something is playing" only looks at a screen right before it
+/// would turn off: one thumbnail this long before, and another a second later.
+const PROBE_BEFORE_MS: u64 = 2500;
+const PROBE_GAP_MS: u64 = 1000;
 const APPS_EVERY_MS: u64 = 5000;
 /// Keep status.json fresh this long after the settings window last asked.
 const WATCH_MS: u64 = 5000;
@@ -81,7 +86,8 @@ struct Screen {
     d: Display,
     rule: ScreenRule,
     last_change: u64,
-    next_sample: u64,
+    /// When the first thumbnail of the before-turning-off check was taken.
+    probe: Option<u64>,
     /// Why it's being kept on right now (fullscreen game, paused...).
     held_by: Option<String>,
 }
@@ -100,6 +106,7 @@ struct App {
     next_apps_scan: u64,
     hotkeys_taken: Vec<String>,
     ticks: u64,
+    tick_ms: u32,
     icon: HICON,
     taskbar_created: u32,
 }
@@ -155,6 +162,7 @@ pub fn run(open_settings_now: bool) {
             next_apps_scan: 0,
             hotkeys_taken: Vec::new(),
             ticks: 0,
+            tick_ms: TICK_SLOW_MS,
             icon: null_mut(),
             taskbar_created: taskbar_created_message(),
         });
@@ -165,7 +173,7 @@ pub fn run(open_settings_now: bool) {
         app.tray(NIM_ADD);
         app.write_status();
     });
-    unsafe { SetTimer(hwnd, TIMER_TICK, TICK_MS, None) };
+    unsafe { SetTimer(hwnd, TIMER_TICK, TICK_SLOW_MS, None) };
     if open_settings_now {
         open_settings();
     }
@@ -209,7 +217,7 @@ impl App {
                     s.rule = rule;
                     s
                 }
-                None => Screen { d, rule, last_change: 0, next_sample: 0, held_by: None },
+                None => Screen { d, rule, last_change: 0, probe: None, held_by: None },
             };
             self.screens.push(screen);
         }
@@ -265,11 +273,24 @@ impl App {
             self.apply(actions);
         }
 
-        if self.ticks.is_multiple_of(8) {
+        if self.ticks.is_multiple_of(4) {
             overlay::raise();
         }
-        if now < self.watch_until && self.ticks.is_multiple_of(2) {
+        if now < self.watch_until {
             self.write_status();
+        }
+        self.pace(now);
+    }
+
+    /// Pick the tick speed: fast only while something is about to happen.
+    fn pace(&mut self, now: u64) {
+        let busy = (0..self.engine.len()).any(|i| {
+            self.engine.phase(i) != Phase::On || self.engine.remaining(i, now).is_some_and(|ms| ms <= FAST_BEFORE_MS)
+        });
+        let ms = if busy { TICK_FAST_MS } else { TICK_SLOW_MS };
+        if ms != self.tick_ms {
+            self.tick_ms = ms;
+            unsafe { SetTimer(self.hwnd, TIMER_TICK, ms, None) };
         }
     }
 
@@ -303,20 +324,30 @@ impl App {
                 None
             };
 
-            // Only look at the picture of a screen that's on and idle.
-            let idle_for = self.engine.remaining(i, now).map(|left| s.rule.to_rule().timeout_ms.saturating_sub(left));
-            if s.rule.enabled
-                && s.rule.stay_on_while_playing
-                && held_by.is_none()
-                && idle_for.is_some_and(|t| t >= SAMPLE_AFTER_IDLE_MS)
-                && now >= s.next_sample
-            {
-                s.next_sample = now + SAMPLE_EVERY_MS;
-                if self.sampler.changed(&s.d.id, s.d.px) {
-                    s.last_change = now;
+            // Is something playing? Only asked right before the screen would
+            // turn off: a thumbnail, then another a second later. If they
+            // differ, the picture is moving and the timer starts over.
+            let left = self.engine.remaining(i, now);
+            let probing =
+                s.rule.stay_on_while_playing && held_by.is_none() && left.is_some_and(|ms| ms <= PROBE_BEFORE_MS);
+            match (probing, s.probe) {
+                (true, None) => {
+                    self.sampler.forget(&s.d.id);
+                    self.sampler.changed(&s.d.id, s.d.px);
+                    s.probe = Some(now);
                 }
-            } else if idle_for.is_none_or(|t| t < SAMPLE_AFTER_IDLE_MS) {
-                self.sampler.forget(&s.d.id);
+                (true, Some(t)) if now.saturating_sub(t) >= PROBE_GAP_MS => {
+                    if self.sampler.changed(&s.d.id, s.d.px) {
+                        s.last_change = now;
+                    }
+                    s.probe = None;
+                    self.sampler.forget(&s.d.id);
+                }
+                (false, Some(_)) => {
+                    s.probe = None;
+                    self.sampler.forget(&s.d.id);
+                }
+                _ => {}
             }
             out.push(ScreenInputs { last_change: s.last_change, held: held_by.is_some() });
             s.held_by = held_by;
