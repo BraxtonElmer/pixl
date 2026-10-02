@@ -8,9 +8,6 @@ export type ScreenRule = {
   trigger: Trigger;
   timeoutSecs: number;
   wake: Wake;
-  typingCounts: boolean;
-  stayOnWhilePlaying: boolean;
-  fade: boolean;
 };
 
 export type Hotkey = { ctrl: boolean; alt: boolean; shift: boolean; win: boolean; key: number };
@@ -25,7 +22,8 @@ export type Config = {
   version: number;
   enabled: boolean;
   pauseInFullscreen: boolean;
-  respectKeepAwake: boolean;
+  stayOnWhilePlaying: boolean;
+  fade: boolean;
   keepOnApps: string[];
   ignoreMusicPlayers: boolean;
   ignoreSoundFrom: string[];
@@ -68,9 +66,6 @@ export const DEFAULT_RULE: ScreenRule = {
   trigger: 'pc',
   timeoutSecs: 1800,
   wake: 'any',
-  typingCounts: true,
-  stayOnWhilePlaying: true,
-  fade: true,
 };
 
 export const api = {

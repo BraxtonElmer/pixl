@@ -89,42 +89,6 @@
         </p>
       {/if}
     </div>
-
-    <div class="block rows">
-      <div class="row">
-        <div class="text">
-          <span class="t">
-            Count typing as activity
-            <Help text="When off, only the mouse keeps this screen on, so typing on another screen won't keep it awake. Any key still wakes it once it's off, unless it only wakes when the cursor moves onto it." />
-          </span>
-        </div>
-        <Switch checked={rule.typingCounts} label="Count typing as activity" onchange={(v) => set('typingCounts', v)} />
-      </div>
-      <div class="row">
-        <div class="text">
-          <span class="t">
-            Stay on while something is playing
-            <Help text="Right before the screen would turn off, Pixl checks whether an app on it is playing sound or its picture is moving. Either one starts the timer over. Sound also catches videos that Windows hides from screen capture. Music apps on the ignore list don't count." />
-          </span>
-          <span class="muted small">Videos, games</span>
-        </div>
-        <Switch
-          checked={rule.stayOnWhilePlaying}
-          label="Stay on while something is playing"
-          onchange={(v) => set('stayOnWhilePlaying', v)}
-        />
-      </div>
-      <div class="row">
-        <div class="text">
-          <span class="t">
-            Fade out first
-            <Help text="The screen dims over 5 seconds before it turns off. Move the mouse or press a key during the fade and it cancels." />
-          </span>
-          <span class="muted small">5 seconds to change your mind</span>
-        </div>
-        <Switch checked={rule.fade} label="Fade out first" onchange={(v) => set('fade', v)} />
-      </div>
-    </div>
   {/if}
 </section>
 
@@ -163,10 +127,6 @@
     display: flex;
     flex-direction: column;
     gap: 10px;
-  }
-  .block.rows {
-    gap: 0;
-    padding-top: 4px;
   }
   .block-title {
     display: flex;

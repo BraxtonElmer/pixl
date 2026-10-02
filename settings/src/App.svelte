@@ -33,6 +33,8 @@
   let now = $state(Date.now());
   let selected = $state(0);
   let pauseMenu = $state(false);
+  // The "ignore other apps too" list is shown only when asked for.
+  let editIgnored = $state(false);
   let error = $state('');
   /** The tray app hasn't answered for a while. */
   let trayMissing = $state(false);
@@ -359,6 +361,76 @@
             onchange={(r) => setRule(screen.id, r)}
           />
         {/if}
+
+        <section class="card options">
+          <div class="row stack head-row">
+            <h2>Screens stay on while…</h2>
+            <span class="muted small">For every screen, even when you're not touching the mouse or keyboard.</span>
+          </div>
+          <div class="row">
+            <div class="text">
+              <span class="t">
+                Something is playing
+                <Help text="Right before a screen would turn off, Pixl checks whether an app on it is playing sound or its picture is moving. Either one starts the timer over. Sound also catches videos that Windows hides from screen capture." />
+              </span>
+              <span class="muted small">Videos, games</span>
+            </div>
+            <Switch
+              checked={config.stayOnWhilePlaying}
+              label="Keep screens on while something is playing"
+              onchange={(v) => setConfig('stayOnWhilePlaying', v)}
+            />
+          </div>
+          {#if config.stayOnWhilePlaying}
+            <div class="row sub">
+              <div class="text">
+                <span class="t">
+                  Music doesn't count
+                  <Help text="Music alone won't keep a screen on while you're away. Covers Spotify, Apple Music, iTunes, TIDAL, Deezer, Amazon Music, foobar2000, MusicBee, AIMP and Winamp." />
+                </span>
+                <button class="link small" onclick={() => (editIgnored = !editIgnored)}>
+                  {editIgnored
+                    ? 'Done'
+                    : config.ignoreSoundFrom.length
+                      ? `Also ignoring ${config.ignoreSoundFrom.length} other app${config.ignoreSoundFrom.length === 1 ? '' : 's'}`
+                      : 'Ignore other apps too'}
+                </button>
+              </div>
+              <Switch
+                checked={config.ignoreMusicPlayers}
+                label="Music doesn't count"
+                onchange={(v) => setConfig('ignoreMusicPlayers', v)}
+              />
+            </div>
+            {#if editIgnored}
+              <div class="row stack sub">
+                <span class="muted small">Sound from these apps doesn't keep a screen on either.</span>
+                <AppList apps={config.ignoreSoundFrom} onchange={(a) => setConfig('ignoreSoundFrom', a)} />
+              </div>
+            {/if}
+          {/if}
+          <div class="row">
+            <div class="text">
+              <span class="t">
+                An app is fullscreen
+                <Help text="While a game, presentation or any other app fills a screen, that screen stays on, even when it's quiet and still (Pixl can't see controller input)." />
+              </span>
+              <span class="muted small">Games with a controller, presentations</span>
+            </div>
+            <Switch
+              checked={config.pauseInFullscreen}
+              label="Keep screens on while an app is fullscreen"
+              onchange={(v) => setConfig('pauseInFullscreen', v)}
+            />
+          </div>
+          <div class="row stack">
+            <span class="t">
+              These apps are open
+              <Help text="Every screen stays on while one of these is running. Useful for apps you watch without touching, like OBS while streaming, a long render or a call." />
+            </span>
+            <AppList apps={config.keepOnApps} onchange={(a) => setConfig('keepOnApps', a)} />
+          </div>
+        </section>
       </div>
 
       <aside class="col">
@@ -373,74 +445,22 @@
           <div class="row">
             <div class="text">
               <span class="t">
+                Fade out before turning off
+                <Help text="Screens dim over 5 seconds before they go black. Move the mouse or press a key during the fade and it cancels." />
+              </span>
+              <span class="muted small">5 seconds to change your mind</span>
+            </div>
+            <Switch checked={config.fade} label="Fade out before turning off" onchange={(v) => setConfig('fade', v)} />
+          </div>
+          <div class="row">
+            <div class="text">
+              <span class="t">
                 Check for updates
                 <Help text="About once a day Pixl asks GitHub whether there's a new version. If there is, it shows what's new and asks before installing. Updates are checked against Pixl's signing key, so only genuine releases are installed." />
               </span>
               <span class="muted small">Asks before installing</span>
             </div>
             <Switch checked={config.checkUpdates} label="Check for updates" onchange={(v) => setConfig('checkUpdates', v)} />
-          </div>
-          <div class="row">
-            <div class="text">
-              <span class="t">
-                Keep on while an app is fullscreen
-                <Help text="While a game, presentation or any other app fills a screen, that screen stays on, even when it's quiet and you're not touching the mouse or keyboard (Pixl can't see controller input). Videos in a normal window are handled by each screen's 'Stay on while something is playing'." />
-              </span>
-              <span class="muted small">Games with a controller, presentations</span>
-            </div>
-            <Switch
-              checked={config.pauseInFullscreen}
-              label="Keep screens on while an app is fullscreen"
-              onchange={(v) => setConfig('pauseInFullscreen', v)}
-            />
-          </div>
-          <div class="row">
-            <div class="text">
-              <span class="t">
-                Respect "keep awake" apps
-                <Help text="Video players, calls and presentations can ask Windows to keep the display on. When this is on, screens set to 'When I stop using the PC' listen to them. Some apps ask all the time, which would keep those screens on forever, so it's off by default." />
-              </span>
-              <span class="muted small">Video players, calls</span>
-            </div>
-            <Switch
-              checked={config.respectKeepAwake}
-              label="Respect keep awake requests"
-              onchange={(v) => setConfig('respectKeepAwake', v)}
-            />
-          </div>
-        </section>
-
-        <section class="card options">
-          <div class="row stack">
-            <span class="t">
-              Keep every screen on while these apps run
-              <Help text="Useful for apps you watch without touching, like OBS while streaming or a long render." />
-            </span>
-            <AppList apps={config.keepOnApps} onchange={(a) => setConfig('keepOnApps', a)} />
-          </div>
-        </section>
-
-        <section class="card options">
-          <div class="row">
-            <div class="text">
-              <span class="t">
-                Ignore music players
-                <Help text="A screen stays on while an app on it plays sound, if 'Stay on while something is playing' is on for that screen. With this on, music players don't count, so music alone won't keep a screen on while you're away. Covers Spotify, Apple Music, iTunes, TIDAL, Deezer, Amazon Music, foobar2000, MusicBee, AIMP and Winamp." />
-              </span>
-              <span class="muted small">Music alone won't keep a screen on</span>
-            </div>
-            <Switch
-              checked={config.ignoreMusicPlayers}
-              label="Ignore music players"
-              onchange={(v) => setConfig('ignoreMusicPlayers', v)}
-            />
-          </div>
-          <div class="row stack">
-            <span class="t">
-              Also ignore sound from
-              <Help text="Other apps whose sound shouldn't keep a screen on, like a podcast app or a game launcher that plays music." />
-            </span>
-            <AppList apps={config.ignoreSoundFrom} onchange={(a) => setConfig('ignoreSoundFrom', a)} />
           </div>
         </section>
 
@@ -623,6 +643,19 @@
   }
   .taken {
     color: var(--bad);
+  }
+  /* A setting that belongs to the one above it. */
+  .row.sub {
+    padding-left: 18px;
+    border-left: 2px solid var(--stroke);
+    margin-left: 2px;
+  }
+  .row.sub .link {
+    align-self: flex-start;
+    margin-top: 2px;
+  }
+  .head-row {
+    gap: 2px;
   }
   .swatches {
     display: flex;

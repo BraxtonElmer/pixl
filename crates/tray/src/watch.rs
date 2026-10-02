@@ -1,12 +1,11 @@
 //! Things that keep screens on regardless of input: a fullscreen game, an app
-//! asking Windows to keep the display awake, a program on the keep-on list.
+//! on the keep-on list.
 
 use pixl_platform::wide::from_wide;
 use windows_sys::Win32::Foundation::RECT;
 use windows_sys::Win32::Graphics::Gdi::{
     GetMonitorInfoW, HMONITOR, MONITOR_DEFAULTTONEAREST, MONITOR_DEFAULTTONULL, MONITORINFO, MonitorFromWindow,
 };
-use windows_sys::Win32::System::Power::{CallNtPowerInformation, ES_DISPLAY_REQUIRED, SystemExecutionState};
 use windows_sys::Win32::UI::Shell::{
     QUNS_PRESENTATION_MODE, QUNS_RUNNING_D3D_FULL_SCREEN, SHQueryUserNotificationState,
 };
@@ -74,19 +73,4 @@ pub fn fullscreen_monitor() -> Option<usize> {
     let m = mi.rcMonitor;
     let covers = w.left <= m.left && w.top <= m.top && w.right >= m.right && w.bottom >= m.bottom;
     covers.then_some(mon as usize)
-}
-
-/// Some app (a video player, a call, a presentation) asked Windows to keep the display on.
-pub fn display_kept_awake() -> bool {
-    let mut state: u32 = 0;
-    let rc = unsafe {
-        CallNtPowerInformation(
-            SystemExecutionState,
-            std::ptr::null(),
-            0,
-            (&raw mut state).cast(),
-            size_of::<u32>() as u32,
-        )
-    };
-    rc == 0 && state & ES_DISPLAY_REQUIRED != 0
 }

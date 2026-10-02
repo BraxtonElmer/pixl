@@ -258,7 +258,11 @@ impl App {
 
     fn sync_engine(&mut self) {
         let now = self.now();
-        let list: Vec<_> = self.screens.iter().map(|s| (s.d.id.clone(), s.rule.to_rule())).collect();
+        let list: Vec<_> = self
+            .screens
+            .iter()
+            .map(|s| (s.d.id.clone(), s.rule.to_rule(self.config.stay_on_while_playing, self.config.fade)))
+            .collect();
         let actions = self.engine.set_screens(&list, now);
         self.apply(actions);
         // Rules may have changed (a shorter timer): sleep to match.
@@ -312,12 +316,9 @@ impl App {
     /// happens only while something needs it.
     fn pace(&mut self, now: u64) {
         let dark = (0..self.engine.len()).any(|i| self.engine.phase(i) != Phase::On);
-        // Key presses are only told apart from the mouse when a setting cares.
-        let keys = dark
-            || self
-                .screens
-                .iter()
-                .any(|s| s.rule.enabled && (!s.rule.typing_counts || s.rule.trigger == TriggerSetting::Away));
+        // Key presses only need telling apart from the mouse for "not using
+        // this screen", which counts typing into windows on that screen.
+        let keys = dark || self.screens.iter().any(|s| s.rule.enabled && s.rule.trigger == TriggerSetting::Away);
         self.input.listen(self.hwnd, keys, dark);
 
         let mut wait = self.engine.next_wait(now, &PACE);
@@ -346,7 +347,6 @@ impl App {
     fn screen_inputs(&mut self, now: u64) -> Vec<ScreenInputs> {
         let c = &self.config;
         let fullscreen = if c.pause_in_fullscreen { watch::fullscreen_monitor() } else { None };
-        let awake = c.respect_keep_awake && watch::display_kept_awake();
         if !c.keep_on_apps.is_empty() && now >= self.next_apps_scan {
             self.running = pixl_platform::apps::running();
             self.next_apps_scan = now + APPS_EVERY_MS;
@@ -357,10 +357,9 @@ impl App {
 
         // Screens where an app with a window on them is making sound. Only
         // worked out while some screen is about to turn off.
-        let about_to_turn_off = (0..self.screens.len()).any(|i| {
-            self.screens[i].rule.stay_on_while_playing
-                && self.engine.remaining(i, now).is_some_and(|ms| ms <= PROBE_BEFORE_MS)
-        });
+        let playing = c.stay_on_while_playing;
+        let about_to_turn_off = playing
+            && (0..self.screens.len()).any(|i| self.engine.remaining(i, now).is_some_and(|ms| ms <= PROBE_BEFORE_MS));
         let mut with_sound: HashSet<usize> = HashSet::new();
         if about_to_turn_off {
             let ignored: HashSet<String> = c.ignored_sound().into_iter().collect();
@@ -382,12 +381,8 @@ impl App {
                 Some("Paused".into())
             } else if fullscreen == Some(s.d.hmonitor) {
                 Some("A fullscreen app is open".into())
-            } else if let Some(app) = &app {
-                Some(format!("{app} is running"))
-            } else if awake && s.rule.trigger == TriggerSetting::Pc {
-                Some("An app is keeping the display on".into())
             } else {
-                None
+                app.as_ref().map(|app| format!("{app} is running"))
             };
 
             // Is something playing? Only asked right before the screen would
@@ -396,8 +391,7 @@ impl App {
             // over. (Protected streaming video captures as black, so the
             // sound is what gives it away.)
             let left = self.engine.remaining(i, now);
-            let probing =
-                s.rule.stay_on_while_playing && held_by.is_none() && left.is_some_and(|ms| ms <= PROBE_BEFORE_MS);
+            let probing = playing && held_by.is_none() && left.is_some_and(|ms| ms <= PROBE_BEFORE_MS);
             if probing && with_sound.contains(&s.d.hmonitor) {
                 s.last_change = now;
                 s.probe = None;

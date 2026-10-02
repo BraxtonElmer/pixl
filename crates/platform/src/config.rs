@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use pixl_core::{Rule, Trigger, Wake};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
-/// How long a fade lasts when "Fade out first" is on.
+/// How long a fade lasts when "Fade out before turning off" is on.
 pub const FADE_MS: u64 = 5000;
 /// Music players: their sound doesn't mean someone is watching the screen.
 pub const MUSIC_APPS: [&str; 10] = [
@@ -33,9 +33,11 @@ pub struct Config {
     pub enabled: bool,
     /// A fullscreen game or presentation keeps its screen on.
     pub pause_in_fullscreen: bool,
-    /// Apps that ask Windows to keep the display on (video players, calls)
-    /// keep screens using "When I stop using the PC" on.
-    pub respect_keep_awake: bool,
+    /// A playing video or game (a moving picture, or an app on the screen
+    /// making sound) keeps its screen on.
+    pub stay_on_while_playing: bool,
+    /// Screens fade to black over a few seconds first; any use cancels it.
+    pub fade: bool,
     /// Every screen stays on while one of these programs is running (exe names).
     pub keep_on_apps: Vec<String>,
     /// Sound from known music players (`MUSIC_APPS`) doesn't count as
@@ -57,7 +59,8 @@ impl Default for Config {
             version: 1,
             enabled: true,
             pause_in_fullscreen: true,
-            respect_keep_awake: false,
+            stay_on_while_playing: true,
+            fade: true,
             keep_on_apps: Vec::new(),
             ignore_music_players: true,
             ignore_sound_from: Vec::new(),
@@ -92,9 +95,12 @@ pub struct ScreenRule {
     pub trigger: TriggerSetting,
     pub timeout_secs: u32,
     pub wake: WakeSetting,
-    pub typing_counts: bool,
-    pub stay_on_while_playing: bool,
-    pub fade: bool,
+    /// Per-screen versions of `Config::stay_on_while_playing` and
+    /// `Config::fade` from earlier versions: read once to carry them over, never written.
+    #[serde(rename = "stayOnWhilePlaying", skip_serializing)]
+    pub legacy_playing: Option<bool>,
+    #[serde(rename = "fade", skip_serializing)]
+    pub legacy_fade: Option<bool>,
 }
 
 impl Default for ScreenRule {
@@ -104,15 +110,15 @@ impl Default for ScreenRule {
             trigger: TriggerSetting::Pc,
             timeout_secs: 30 * 60,
             wake: WakeSetting::Any,
-            typing_counts: true,
-            stay_on_while_playing: true,
-            fade: true,
+            legacy_playing: None,
+            legacy_fade: None,
         }
     }
 }
 
 impl ScreenRule {
-    pub fn to_rule(&self) -> Rule {
+    /// The engine's rule, with the settings shared by every screen.
+    pub fn to_rule(&self, stay_on_while_playing: bool, fade: bool) -> Rule {
         Rule {
             enabled: self.enabled,
             trigger: match self.trigger {
@@ -124,9 +130,11 @@ impl ScreenRule {
                 WakeSetting::Any => Wake::AnyInput,
                 WakeSetting::Cursor => Wake::CursorEnters,
             },
-            typing_counts: self.typing_counts,
-            stay_on_while_playing: self.stay_on_while_playing,
-            fade_ms: if self.fade { FADE_MS } else { 0 },
+            // Typing always counts; for "not using this screen" only typing
+            // into windows on it does.
+            typing_counts: true,
+            stay_on_while_playing,
+            fade_ms: if fade { FADE_MS } else { 0 },
         }
     }
 }
@@ -253,6 +261,18 @@ impl Config {
     /// Earlier versions listed the music players in `ignore_sound_from`;
     /// they're built in now, so only apps the user added stay there.
     fn tidy(&mut self) {
+        // "Something is playing" and "fade" used to be set per screen; they're
+        // on for everyone now if any screen had them on.
+        let old: Vec<(Option<bool>, Option<bool>)> =
+            self.screens.values().map(|r| (r.legacy_playing, r.legacy_fade)).collect();
+        if old.iter().any(|(p, f)| p.is_some() || f.is_some()) {
+            self.stay_on_while_playing = old.iter().any(|(p, _)| p.unwrap_or(true));
+            self.fade = old.iter().any(|(_, f)| f.unwrap_or(true));
+        }
+        for r in self.screens.values_mut() {
+            r.legacy_playing = None;
+            r.legacy_fade = None;
+        }
         self.ignore_sound_from.retain(|a| !MUSIC_APPS.iter().any(|m| m.eq_ignore_ascii_case(a)));
     }
 
@@ -307,36 +327,58 @@ mod tests {
         assert!(c.pause_in_fullscreen);
         let r = c.rule_for("A");
         assert_eq!(r.timeout_secs, 90);
-        assert!(r.fade);
+        assert!(c.fade && c.stay_on_while_playing);
         assert_eq!(c.rule_for("B"), ScreenRule::default());
     }
 
     #[test]
     fn settings_from_the_page_round_trip() {
-        // What the settings page sends: camelCase, a cleared shortcut, and a
-        // field left over from an older version.
+        // What the settings page sends: camelCase, a cleared shortcut, and
+        // fields left over from older versions.
         let sent = r##"{
             "version": 1, "enabled": true, "pauseInFullscreen": false, "respectKeepAwake": true,
+            "stayOnWhilePlaying": false, "fade": false,
             "keepOnApps": ["obs64.exe"],
             "hotkeys": {"turnOffAll": {"ctrl": true, "alt": true, "shift": false, "win": false, "key": 79},
                         "wakeAll": null, "pause": {"ctrl": true, "alt": false, "shift": true, "win": false, "key": 80}},
             "appearance": {"theme": "dark", "accent": "#0f7b6c", "material": "solid"},
             "screens": {"MSI4CC2-1": {"enabled": true, "trigger": "away", "timeoutSecs": 2700, "method": "power",
-                        "wake": "cursor", "typingCounts": false, "stayOnWhilePlaying": false, "fade": false}}
+                        "wake": "cursor"}}
         }"##;
         let c: Config = serde_json::from_str(sent).unwrap();
-        assert!(!c.pause_in_fullscreen && c.respect_keep_awake);
+        assert!(!c.pause_in_fullscreen && !c.stay_on_while_playing && !c.fade);
         assert_eq!(c.keep_on_apps, ["obs64.exe"]);
         assert_eq!(c.hotkeys.wake_all, None);
         assert_eq!(c.hotkeys.pause.map(|h| h.label()).as_deref(), Some("Ctrl+Shift+P"));
         assert_eq!(c.appearance.material, "solid");
         let r = c.rule_for("MSI4CC2-1");
         assert_eq!((r.trigger, r.wake, r.timeout_secs), (TriggerSetting::Away, WakeSetting::Cursor, 2700));
-        assert!(!r.typing_counts && !r.stay_on_while_playing && !r.fade);
 
         // Written back and read again: nothing changes.
         let again: Config = serde_json::from_str(&serde_json::to_string(&c).unwrap()).unwrap();
         assert_eq!(serde_json::to_value(&again).unwrap(), serde_json::to_value(&c).unwrap());
+    }
+
+    #[test]
+    fn per_screen_playing_and_fade_carry_over() {
+        // Turned off on one screen only: still on for everyone.
+        let mut c: Config = serde_json::from_str(
+            r#"{"screens": {"A": {"stayOnWhilePlaying": false, "fade": false}, "B": {"fade": true}}}"#,
+        )
+        .unwrap();
+        c.tidy();
+        assert!(c.stay_on_while_playing && c.fade);
+        // Turned off on every screen: off for everyone.
+        let mut c: Config = serde_json::from_str(
+            r#"{"screens": {"A": {"stayOnWhilePlaying": false, "fade": false}, "B": {"stayOnWhilePlaying": false, "fade": false}}}"#,
+        )
+        .unwrap();
+        c.tidy();
+        assert!(!c.stay_on_while_playing && !c.fade);
+        // The old fields are gone once saved.
+        let saved = serde_json::to_string(&c).unwrap();
+        assert!(!saved.contains("legacy"));
+        assert_eq!(saved.matches(r#""fade""#).count(), 1);
     }
 
     #[test]
@@ -355,10 +397,11 @@ mod tests {
 
     #[test]
     fn rules_convert_for_the_engine() {
-        let r = ScreenRule { timeout_secs: 2, fade: false, trigger: TriggerSetting::Away, ..Default::default() };
-        let e = r.to_rule();
+        let r = ScreenRule { timeout_secs: 2, trigger: TriggerSetting::Away, ..Default::default() };
+        let e = r.to_rule(true, false);
         assert_eq!(e.timeout_ms, u64::from(MIN_TIMEOUT_SECS) * 1000);
         assert_eq!(e.fade_ms, 0);
         assert_eq!(e.trigger, Trigger::AwayFromScreen);
+        assert!(e.typing_counts && e.stay_on_while_playing);
     }
 }
