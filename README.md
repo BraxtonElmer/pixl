@@ -1,10 +1,31 @@
-# Pixl
+<p align="center">
+  <img src="docs/banner.svg" alt="Pixl: protect your OLED from burn-in" width="100%">
+</p>
 
-OLED screens burn in when they show the same thing for hours. Windows can
-only turn every display off at once, after the whole PC has been idle. Pixl
-turns each screen black on its own schedule: the one you stepped away from,
-the one you haven't looked at in half an hour. It comes back the moment you
-return. Your PC, your apps and your other screens keep running.
+<p align="center">
+  <a href="https://github.com/BraxtonElmer/pixl/releases/latest"><img src="https://img.shields.io/github/v/release/BraxtonElmer/pixl?label=download&color=0b7f8a" alt="Latest release"></a>
+  <img src="https://img.shields.io/badge/Windows-10%20%7C%2011-0b7f8a" alt="Windows 10 and 11">
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/BraxtonElmer/pixl?color=0b7f8a" alt="License: GPL-3.0"></a>
+  <a href="https://ko-fi.com/akariyu"><img src="https://img.shields.io/badge/support-Ko--fi-0b7f8a?logo=kofi&logoColor=white" alt="Support on Ko-fi"></a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/BraxtonElmer/pixl/releases/latest"><img src="docs/download-button.svg" height="36" alt="Download for Windows"></a>
+  &nbsp;
+  <a href="https://ko-fi.com/akariyu"><img src="https://ko-fi.com/img/githubbutton_sm.svg" height="36" alt="Support me on Ko-fi"></a>
+</p>
+
+## Why I built this
+
+I code a lot, and I usually have other work running alongside it. Some nights
+I fall asleep with the PC still on, and my OLED sits there showing the same
+editor for hours, which is exactly how burn-in happens. Windows can only turn
+every screen off at once, and only after the whole PC has gone idle. So I
+built Pixl: it turns each screen black on its own schedule while the PC and
+everything on it keeps running, and brings it back the moment I sit down
+again.
+
+## What it does
 
 - **A rule per screen.** Turn a screen off when the PC is idle, or when you
   haven't used *that* screen, even while you're busy on another one. Pick
@@ -20,8 +41,11 @@ return. Your PC, your apps and your other screens keep running.
   cursor onto that screen, if you prefer.
 - **Light.** The part that runs in the tray is about half a megabyte, uses
   about 2 MB of memory and no measurable CPU: it sleeps until a screen could
-  actually turn off. The settings window closes
-  completely when you close it.
+  actually turn off. The settings window closes completely when you close it.
+
+<p align="center">
+  <img src="docs/screenshot.png" alt="Pixl's settings window" width="820">
+</p>
 
 Shortcuts work anywhere and can be changed in the settings:
 **Ctrl+Alt+O** turns every screen off now, **Ctrl+Alt+W** wakes them all,
@@ -32,7 +56,8 @@ Shortcuts work anywhere and can be changed in the settings:
 Download the installer from the
 [latest release](https://github.com/BraxtonElmer/pixl/releases/latest) and
 run it. No admin rights are needed. There's also a portable zip if you'd
-rather not install anything.
+rather not install anything. Pixl checks for new versions about once a day
+and asks before installing them.
 
 ## Build
 
@@ -51,6 +76,13 @@ Then run `dist/Pixl.exe`, or the installer from `target/release/bundle/nsis/`.
 | `crates/platform` | Monitor detection, settings file, running apps, start with Windows. |
 | `crates/tray` | `Pixl.exe`: tray icon, watching for input, the black screens. |
 | `settings` | The settings window (Tauri + Svelte). |
+
+## Support
+
+Pixl is free and open source. If it saves your screen, you can buy me a
+coffee:
+
+<a href="https://ko-fi.com/akariyu"><img src="https://ko-fi.com/img/githubbutton_sm.svg" alt="Support me on Ko-fi"></a>
 
 ## License
 

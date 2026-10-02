@@ -106,6 +106,8 @@ jobs:
             ''
             'The `latest.json` and `.sig` files are used by the in-app updater.'
             ''
+            'Like Pixl? You can support it on [Ko-fi](https://ko-fi.com/akariyu).'
+            ''
             '## What''s new'
             ''
           ) -join "`n"
