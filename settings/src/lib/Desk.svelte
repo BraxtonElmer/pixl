@@ -14,12 +14,14 @@
   }: {
     screens: ScreenStatus[];
     rules: ScreenRule[];
-    selected: number;
+    /** Indexes of the screens being edited. */
+    selected: number[];
     /** Seconds since `screens` was fetched, so countdowns keep ticking between fetches. */
     elapsed: number;
     paused: boolean;
     enabled: boolean;
-    onselect: (i: number) => void;
+    /** `add` is true for Ctrl-click: add or remove the screen instead of picking only it. */
+    onselect: (i: number, add: boolean) => void;
   } = $props();
 
   let width = $state(600);
@@ -68,13 +70,13 @@
         class:off={s.phase === 'off' && enabled && !paused}
         class:fading={s.phase === 'fading'}
         class:ignored={!rules[i].enabled}
-        aria-pressed={i === selected}
+        aria-pressed={selected.includes(i)}
         aria-label="Screen {s.number}, {s.name}. {title}. {sub}"
         style:left="{(s.px.x - box.minX) * box.scale + GAP / 2}px"
         style:top="{(s.px.y - box.minY) * box.scale + GAP / 2}px"
         style:width="{s.px.w * box.scale - GAP}px"
         style:height="{s.px.h * box.scale - GAP}px"
-        onclick={() => onselect(i)}
+        onclick={(e) => onselect(i, e.ctrlKey || e.metaKey || e.shiftKey)}
       >
         <span class="num">{s.number}</span>
         <span class="state">
@@ -93,7 +95,10 @@
     justify-content: center;
     padding: 16px 4px;
     border-radius: var(--radius);
-    background: var(--well);
+    /* The same dotted canvas as ScreenStitch's desk. */
+    background-color: var(--well);
+    background-image: radial-gradient(var(--stroke-strong) 1px, transparent 1px);
+    background-size: 18px 18px;
     overflow: hidden;
   }
   .stage {
@@ -124,7 +129,8 @@
   }
   .screen[aria-pressed='true'] {
     border-color: var(--accent);
-    box-shadow: 0 0 0 2px var(--accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent);
+    z-index: 1;
   }
   .fading {
     background: color-mix(in srgb, var(--screen-on) 45%, var(--screen-off));

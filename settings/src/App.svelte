@@ -31,7 +31,8 @@
   let status = $state<Status | null>(null);
   let fetchedAt = $state(Date.now());
   let now = $state(Date.now());
-  let selected = $state(0);
+  /** Indexes of the screens being edited (one or more). */
+  let selected = $state<number[]>([0]);
   let pauseMenu = $state(false);
   // The "ignore other apps too" list is shown only when asked for.
   let editIgnored = $state(false);
@@ -49,7 +50,7 @@
   const config = $derived(st?.config);
   const screens = $derived(status?.screens ?? []);
   const rules = $derived(screens.map((s) => config?.screens[s.id] ?? DEFAULT_RULE));
-  const screen = $derived(screens[selected]);
+  const editing = $derived(selected.filter((i) => i < screens.length));
   const paused = $derived(status?.pausedUntil != null);
   const elapsed = $derived(Math.max(0, (now - fetchedAt) / 1000));
   const managed = $derived(rules.filter((r) => r.enabled).length);
@@ -110,8 +111,8 @@
         status = s;
         trayMissing = false;
         missingSince = 0;
-        if (first) selected = Math.max(0, s.screens.findIndex((x) => x.primary));
-        if (selected >= s.screens.length) selected = 0;
+        if (first) selected = [Math.max(0, s.screens.findIndex((x) => x.primary))];
+        if (!selected.some((i) => i < s.screens.length)) selected = [0];
       } else {
         missingSince ||= Date.now();
         // Give a just-started tray app a moment before saying it isn't running.
@@ -205,10 +206,22 @@
     }
   }
 
-  function setRule(id: string, rule: ScreenRule) {
+  /** Change settings on every screen being edited. */
+  function setRules(patch: Partial<ScreenRule>) {
     if (!st) return;
-    st.config.screens[id] = rule;
+    for (const i of editing) st.config.screens[screens[i].id] = { ...rules[i], ...patch };
     save();
+  }
+
+  /** Click picks one screen; Ctrl-click (or the chips) adds or removes one, keeping at least one. */
+  function select(i: number, add: boolean) {
+    if (!add) {
+      selected = [i];
+    } else if (selected.includes(i)) {
+      if (selected.length > 1) selected = selected.filter((j) => j !== i);
+    } else {
+      selected = [...selected, i].sort((a, b) => a - b);
+    }
   }
 
   function setConfig<K extends keyof Config>(k: K, v: Config[K]) {
@@ -337,7 +350,7 @@
         <section class="card pad">
           <div class="section-head">
             <h2>Your screens</h2>
-            <span class="muted small">Pick a screen to choose when it turns off.</span>
+            <span class="muted small">Pick screens to choose when they turn off. Ctrl-click to pick more than one.</span>
           </div>
           {#if screens.length}
             <Desk
@@ -347,30 +360,45 @@
               {elapsed}
               {paused}
               enabled={config.enabled}
-              onselect={(i) => (selected = i)}
+              onselect={select}
             />
+            {#if screens.length > 1}
+              <div class="picker" role="group" aria-label="Screens to edit">
+                <span class="muted small">Editing</span>
+                {#each screens as s, i (s.id)}
+                  <button class="chip-btn" aria-pressed={selected.includes(i)} onclick={() => select(i, true)}>
+                    <span class="n">{s.number}</span>{s.name}
+                  </button>
+                {/each}
+                <button
+                  class="chip-btn all"
+                  aria-pressed={editing.length === screens.length}
+                  onclick={() => (selected = screens.map((_, i) => i))}>All screens</button
+                >
+              </div>
+            {/if}
           {:else}
             <div class="loading muted">{trayMissing ? 'Start Pixl to see your screens.' : 'Looking for your screens…'}</div>
           {/if}
         </section>
 
-        {#if screen}
+        {#if editing.length}
           <ScreenPanel
-            {screen}
-            rule={rules[selected]}
-            onchange={(r) => setRule(screen.id, r)}
+            screens={editing.map((i) => screens[i])}
+            rules={editing.map((i) => rules[i])}
+            onchange={setRules}
           />
         {/if}
 
         <section class="card options">
           <div class="row stack head-row">
-            <h2>Screens stay on while…</h2>
+            <h2>Keep screens on</h2>
             <span class="muted small">For every screen, even when you're not touching the mouse or keyboard.</span>
           </div>
           <div class="row">
             <div class="text">
               <span class="t">
-                Something is playing
+                While something is playing
                 <Help text="Right before a screen would turn off, Pixl checks whether an app on it is playing sound or its picture is moving. Either one starts the timer over. Sound also catches videos that Windows hides from screen capture." />
               </span>
               <span class="muted small">Videos, games</span>
@@ -385,7 +413,7 @@
             <div class="row sub">
               <div class="text">
                 <span class="t">
-                  Music doesn't count
+                  Ignore music
                   <Help text="Music alone won't keep a screen on while you're away. Covers Spotify, Apple Music, iTunes, TIDAL, Deezer, Amazon Music, foobar2000, MusicBee, AIMP and Winamp." />
                 </span>
                 <button class="link small" onclick={() => (editIgnored = !editIgnored)}>
@@ -398,7 +426,7 @@
               </div>
               <Switch
                 checked={config.ignoreMusicPlayers}
-                label="Music doesn't count"
+                label="Ignore music"
                 onchange={(v) => setConfig('ignoreMusicPlayers', v)}
               />
             </div>
@@ -412,7 +440,7 @@
           <div class="row">
             <div class="text">
               <span class="t">
-                An app is fullscreen
+                While an app is fullscreen
                 <Help text="While a game, presentation or any other app fills a screen, that screen stays on, even when it's quiet and still (Pixl can't see controller input)." />
               </span>
               <span class="muted small">Games with a controller, presentations</span>
@@ -425,7 +453,7 @@
           </div>
           <div class="row stack">
             <span class="t">
-              These apps are open
+              While these apps are open
               <Help text="Every screen stays on while one of these is running. Useful for apps you watch without touching, like OBS while streaming, a long render or a call." />
             </span>
             <AppList apps={config.keepOnApps} onchange={(a) => setConfig('keepOnApps', a)} />
@@ -540,13 +568,16 @@
     </div>
 
     <footer class="muted">
-      <span>Pixl {st.version} · Free and open source</span>
-      {#if upToDate}
-        <span>You have the latest version.</span>
-      {:else if !available}
-        <button class="link" onclick={checkNow}>Check for updates now</button>
-      {/if}
+      <span>
+        Pixl {st.version} · by <button class="link" onclick={() => api.open('author')}>Braxton Elmer</button> · Free and
+        open source · <button class="link kofi" onclick={() => api.open('support')}>Support on Ko-fi ♥</button>
+      </span>
       <span class="spacer"></span>
+      {#if upToDate}
+        <span>You have the latest version</span>
+      {:else if !available}
+        <button class="link" onclick={checkNow}>Check for updates</button>
+      {/if}
       <button class="link" onclick={() => api.open('source')}>Source code</button>
       <button class="link" onclick={() => api.open('issues')}>Report a problem</button>
       <button class="link" onclick={() => api.open('folder')}>Settings folder</button>
@@ -657,6 +688,53 @@
   .head-row {
     gap: 2px;
   }
+  /* Which screens the settings below apply to. */
+  .picker {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 12px;
+  }
+  .picker > .muted {
+    margin-right: 4px;
+  }
+  .chip-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    height: 30px;
+    padding: 0 12px 0 5px;
+    border-radius: 15px;
+    border: 1px solid var(--stroke-strong);
+    background: var(--control);
+    font-size: 13px;
+    cursor: pointer;
+    transition: background var(--fast), border-color var(--fast);
+  }
+  .chip-btn:hover {
+    background: var(--control-hover);
+  }
+  .chip-btn .n {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    background: var(--well);
+    font: 600 11px var(--font-display);
+  }
+  .chip-btn[aria-pressed='true'] {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 16%, var(--control));
+  }
+  .chip-btn[aria-pressed='true'] .n {
+    background: var(--accent);
+    color: var(--on-accent);
+  }
+  .chip-btn.all {
+    padding-left: 12px;
+  }
   .swatches {
     display: flex;
     flex-wrap: wrap;
@@ -678,6 +756,10 @@
   }
   .swatch[aria-checked='true'] {
     border-color: var(--text);
+  }
+  /* Ko-fi's own red, so the support link is easy to find without shouting. */
+  footer .kofi {
+    color: #ff5e5b;
   }
   footer {
     display: flex;

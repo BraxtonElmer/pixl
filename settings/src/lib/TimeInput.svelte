@@ -3,20 +3,24 @@
   // box to type any time from 10 seconds to 24 hours.
   import { STEPS, UNIT_SECS, bestUnit, clampSecs, describe, nearestStep, type Unit } from './time';
 
-  let { secs, onchange }: { secs: number; onchange: (secs: number) => void } = $props();
+  /** `secs` is null when several screens are being edited and their times differ. */
+  let { secs, onchange }: { secs: number | null; onchange: (secs: number) => void } = $props();
 
   // Set from `secs` by the effect below.
   let unit = $state<Unit>('min');
   let text = $state('');
   let editing = $state(false);
   // The time before typing started, for Escape to go back to.
-  let before = 0;
+  let before: number | null = null;
+
+  /** The text the box shows for a time (empty when mixed). */
+  const shown = (s: number | null, u: Unit) => (s === null ? '' : String(+(s / UNIT_SECS[u]).toFixed(2)));
 
   // Follow outside changes (another screen selected, slider moved) unless the user is typing.
   $effect(() => {
     if (!editing) {
-      unit = bestUnit(secs);
-      text = String(+(secs / UNIT_SECS[unit]).toFixed(2));
+      if (secs !== null) unit = bestUnit(secs);
+      text = shown(secs, unit);
     }
   });
 
@@ -24,7 +28,7 @@
     editing = false;
     const n = parseFloat(text.replace(',', '.'));
     if (!Number.isFinite(n) || n <= 0) {
-      text = String(+(secs / UNIT_SECS[unit]).toFixed(2));
+      text = shown(secs, unit);
       return;
     }
     onchange(clampSecs(n * UNIT_SECS[unit]));
@@ -50,9 +54,10 @@
     min="0"
     max={STEPS.length - 1}
     step="1"
-    value={nearestStep(secs)}
+    value={nearestStep(secs ?? 1800)}
+    class:mixed={secs === null}
     aria-label="Time before turning off"
-    aria-valuetext={describe(secs)}
+    aria-valuetext={secs === null ? 'Mixed' : describe(secs)}
     oninput={(e) => onchange(STEPS[+e.currentTarget.value])}
   />
   <div class="typed">
@@ -61,6 +66,7 @@
       type="text"
       inputmode="decimal"
       aria-label="Type the time"
+      placeholder={secs === null ? 'Mixed' : ''}
       bind:value={text}
       onfocus={() => {
         editing = true;
@@ -72,8 +78,8 @@
         if (e.key === 'Enter') e.currentTarget.blur();
         if (e.key === 'Escape') {
           editing = false;
-          onchange(before);
-          text = String(+(before / UNIT_SECS[unit]).toFixed(2));
+          if (before !== null) onchange(before);
+          text = shown(before, unit);
           e.currentTarget.blur();
         }
       }}
@@ -97,6 +103,9 @@
     flex: 1;
     min-width: 160px;
     accent-color: var(--accent);
+  }
+  .slider.mixed {
+    opacity: 0.45;
   }
   .typed {
     display: flex;

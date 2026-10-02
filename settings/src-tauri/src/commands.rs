@@ -93,6 +93,8 @@ pub fn open_link(which: String) {
     match which.as_str() {
         "source" => system::open("https://github.com/BraxtonElmer/pixl"),
         "issues" => system::open("https://github.com/BraxtonElmer/pixl/issues"),
+        "author" => system::open("https://github.com/BraxtonElmer"),
+        "support" => system::open("https://ko-fi.com/akariyu"),
         "folder" => {
             let dir = config::dir();
             let _ = std::fs::create_dir_all(&dir);

@@ -80,5 +80,5 @@ export const api = {
   setStartWithWindows: (on: boolean) => invoke<boolean>('set_start_with_windows', { on }),
   applyMaterial: (material: Material, dark: boolean) => invoke<Material>('apply_material', { material, dark }),
   launchMode: () => invoke<'settings' | 'update'>('launch_mode'),
-  open: (which: 'source' | 'issues' | 'folder') => invoke<void>('open_link', { which }),
+  open: (which: 'source' | 'issues' | 'folder' | 'author' | 'support') => invoke<void>('open_link', { which }),
 };
