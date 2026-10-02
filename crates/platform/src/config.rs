@@ -44,6 +44,8 @@ pub struct Config {
     /// More programs whose sound doesn't count, added by the user (exe names).
     pub ignore_sound_from: Vec<String>,
     pub hotkeys: Hotkeys,
+    /// Look for a new version about once a day.
+    pub check_updates: bool,
     pub appearance: Appearance,
     /// Rules per monitor id. Monitors without an entry use the defaults.
     pub screens: BTreeMap<String, ScreenRule>,
@@ -60,6 +62,7 @@ impl Default for Config {
             ignore_music_players: true,
             ignore_sound_from: Vec::new(),
             hotkeys: Hotkeys::default(),
+            check_updates: true,
             appearance: Appearance::default(),
             screens: BTreeMap::new(),
         }

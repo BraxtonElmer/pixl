@@ -17,7 +17,17 @@ Push-Location settings
 if (-not (Test-Path node_modules)) { Step { npm ci } }
 if ($Installer) {
     # Builds the page, the tray app and the settings app, then packs the installer.
-    Step { npm run tauri build }
+    # Update packages are signed when the updater key is available.
+    $keyDir = Join-Path $HOME '.pixl'
+    if (-not $env:TAURI_SIGNING_PRIVATE_KEY -and (Test-Path "$keyDir/updater.key")) {
+        $env:TAURI_SIGNING_PRIVATE_KEY = Get-Content "$keyDir/updater.key" -Raw
+        $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = Get-Content "$keyDir/updater-key-password.txt" -Raw
+    }
+    if ($env:TAURI_SIGNING_PRIVATE_KEY) {
+        Step { npm run tauri build }
+    } else {
+        Step { npm run tauri build -- --config '{\"bundle\":{\"createUpdaterArtifacts\":false}}' }
+    }
 } else {
     Step { npm run build }
 }

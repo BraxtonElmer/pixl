@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "What the settings window's page may do",
   "windows": ["main"],
-  "permissions": ["core:default", "core:window:allow-show", "core:window:allow-set-theme", "core:window:allow-set-focus", "core:window:allow-minimize", "core:window:allow-toggle-maximize", "core:window:allow-close", "core:window:allow-destroy", "core:window:allow-start-dragging", "core:window:allow-internal-toggle-maximize", "core:window:allow-is-maximized"]
+  "permissions": ["core:default", "core:window:allow-show", "core:window:allow-set-theme", "core:window:allow-set-focus", "core:window:allow-minimize", "core:window:allow-toggle-maximize", "core:window:allow-close", "core:window:allow-destroy", "core:window:allow-start-dragging", "core:window:allow-internal-toggle-maximize", "core:window:allow-is-maximized", "updater:default", "process:allow-exit", "process:allow-restart"]
 }

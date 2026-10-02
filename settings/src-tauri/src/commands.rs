@@ -101,3 +101,11 @@ pub fn open_link(which: String) {
         _ => {}
     }
 }
+
+/// Why this window was opened: "settings" or "update" (the daily check).
+pub struct LaunchMode(pub &'static str);
+
+#[tauri::command]
+pub fn launch_mode(mode: tauri::State<'_, LaunchMode>) -> &'static str {
+    mode.0
+}

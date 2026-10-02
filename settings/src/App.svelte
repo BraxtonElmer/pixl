@@ -23,6 +23,9 @@
   import Segmented from './lib/Segmented.svelte';
   import Switch from './lib/Switch.svelte';
   import TitleBar from './lib/TitleBar.svelte';
+  import UpdatePanel from './lib/UpdatePanel.svelte';
+  import { exit } from '@tauri-apps/plugin-process';
+  import { findUpdate, type Update } from './lib/update';
 
   let st = $state<State | null>(null);
   let status = $state<Status | null>(null);
@@ -117,17 +120,37 @@
     }
   }
 
+  // ---- updates ----
+
+  // "update": opened by the tray app's daily check; only shown if there is one.
+  let mode = $state<'settings' | 'update'>('settings');
+  let available = $state<Update | null>(null);
+  let upToDate = $state(false);
+
+  async function checkNow() {
+    upToDate = false;
+    available = await findUpdate();
+    upToDate = !available;
+  }
+
   onMount(() => {
     (async () => {
+      mode = await api.launchMode().catch(() => 'settings' as const);
       try {
         st = await api.state();
       } catch (e) {
         error = String(e);
       }
-      await poll();
+      if (mode === 'update') {
+        available = st?.config.checkUpdates ? await findUpdate() : null;
+        if (!available) return exit(0);
+      } else {
+        await poll();
+      }
       await tick();
       await getCurrentWindow().show();
       await getCurrentWindow().setFocus();
+      if (mode === 'settings' && st?.config.checkUpdates) available = await findUpdate();
     })();
     const p = setInterval(poll, 1000);
     const t = setInterval(() => (now = Date.now()), 250);
@@ -242,7 +265,9 @@
 <svelte:window onclick={() => (pauseMenu = false)} />
 
 <TitleBar />
-{#if st && config}
+{#if st && mode === 'update' && available}
+  <UpdatePanel update={available} current={st.version} variant="window" onlater={() => exit(0)} />
+{:else if st && config}
   <main>
     <header>
       <div class="titles">
@@ -295,6 +320,9 @@
         <button class="link" onclick={() => (error = '')}>Dismiss</button>
       </div>
     {/if}
+    {#if available}
+      <UpdatePanel update={available} current={st.version} variant="banner" onlater={() => (available = null)} />
+    {/if}
     {#if trayMissing}
       <div class="banner warn" role="alert">
         <span class="grow">Pixl isn't running in the tray, so no screen will turn off.</span>
@@ -341,6 +369,16 @@
               <span class="muted small">Waits quietly in the tray</span>
             </div>
             <Switch checked={st.startWithWindows} label="Start with Windows" onchange={setStartup} />
+          </div>
+          <div class="row">
+            <div class="text">
+              <span class="t">
+                Check for updates
+                <Help text="About once a day Pixl asks GitHub whether there's a new version. If there is, it shows what's new and asks before installing. Updates are checked against Pixl's signing key, so only genuine releases are installed." />
+              </span>
+              <span class="muted small">Asks before installing</span>
+            </div>
+            <Switch checked={config.checkUpdates} label="Check for updates" onchange={(v) => setConfig('checkUpdates', v)} />
           </div>
           <div class="row">
             <div class="text">
@@ -483,6 +521,11 @@
 
     <footer class="muted">
       <span>Pixl {st.version} · Free and open source</span>
+      {#if upToDate}
+        <span>You have the latest version.</span>
+      {:else if !available}
+        <button class="link" onclick={checkNow}>Check for updates now</button>
+      {/if}
       <span class="spacer"></span>
       <button class="link" onclick={() => api.open('source')}>Source code</button>
       <button class="link" onclick={() => api.open('issues')}>Report a problem</button>

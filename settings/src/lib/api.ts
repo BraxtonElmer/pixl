@@ -30,6 +30,7 @@ export type Config = {
   ignoreMusicPlayers: boolean;
   ignoreSoundFrom: string[];
   hotkeys: Hotkeys;
+  checkUpdates: boolean;
   appearance: Appearance;
   screens: Record<string, ScreenRule>;
 };
@@ -83,5 +84,6 @@ export const api = {
   openApps: () => invoke<string[]>('open_apps'),
   setStartWithWindows: (on: boolean) => invoke<boolean>('set_start_with_windows', { on }),
   applyMaterial: (material: Material, dark: boolean) => invoke<Material>('apply_material', { material, dark }),
+  launchMode: () => invoke<'settings' | 'update'>('launch_mode'),
   open: (which: 'source' | 'issues' | 'folder') => invoke<void>('open_link', { which }),
 };

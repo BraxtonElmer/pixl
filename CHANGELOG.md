@@ -28,3 +28,5 @@ First release.
 - Light and dark themes, accent colours, and a frosted glass or solid window.
 - Starts with Windows, installs per user without admin rights, and uses no
   measurable CPU while it waits.
+- Checks for a new version about once a day, shows what's new and asks
+  before installing it. Only updates signed with Pixl's key are installed.

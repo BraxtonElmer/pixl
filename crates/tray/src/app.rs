@@ -43,6 +43,10 @@ const WM_TRAY: u32 = WM_APP + 1;
 const TIMER_TICK: usize = 1;
 const TIMER_FADE: usize = 2;
 const TIMER_REDETECT: usize = 3;
+/// Look for a new version a minute after starting, then once a day.
+const TIMER_UPDATE: usize = 4;
+const FIRST_UPDATE_CHECK_MS: u32 = 60_000;
+const UPDATE_CHECK_EVERY_MS: u32 = 24 * 60 * 60 * 1000;
 /// How often to look (see `Engine::next_wait`). With every screen on, Pixl
 /// sleeps until just before the earliest timer runs out, but at most `max`.
 /// Dark screens wake on input as it happens, so their regular look only has
@@ -180,6 +184,7 @@ pub fn run(open_settings_now: bool) {
         app.write_status();
     });
     with_app(|a| a.pace(input::now()));
+    unsafe { SetTimer(hwnd, TIMER_UPDATE, FIRST_UPDATE_CHECK_MS, None) };
     if open_settings_now {
         open_settings();
     }
@@ -195,8 +200,18 @@ pub fn run(open_settings_now: bool) {
 
 /// Start the settings window (it focuses an already open one by itself).
 pub fn open_settings() {
+    run_settings(&[]);
+}
+
+/// The update check lives in the settings app, which has the updater built
+/// in; it only shows a window when there is a new version.
+fn check_for_update() {
+    run_settings(&["--check-update"]);
+}
+
+fn run_settings(args: &[&str]) {
     let Ok(exe) = std::env::current_exe() else { return };
-    let _ = std::process::Command::new(exe.with_file_name("pixl-settings.exe")).spawn();
+    let _ = std::process::Command::new(exe.with_file_name("pixl-settings.exe")).args(args).spawn();
 }
 
 impl App {
@@ -805,6 +820,13 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
         WM_TIMER if wparam == TIMER_FADE => {
             if !overlay::animate(input::now()) {
                 unsafe { KillTimer(hwnd, TIMER_FADE) };
+            }
+            0
+        }
+        WM_TIMER if wparam == TIMER_UPDATE => {
+            unsafe { SetTimer(hwnd, TIMER_UPDATE, UPDATE_CHECK_EVERY_MS, None) };
+            if with_app(|a| a.config.check_updates).unwrap_or(false) {
+                check_for_update();
             }
             0
         }

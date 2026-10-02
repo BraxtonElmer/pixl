@@ -1,8 +1,13 @@
 name: Release
 
-# Pushing a tag like v0.1.0 builds the installer and a portable zip and
-# creates a draft GitHub release with the notes from CHANGELOG.md.
-# Publishing the draft is what makes it public.
+# Pushing a tag like v0.1.0 builds the installer and a portable zip, signs the
+# update package and creates a draft GitHub release with the notes from
+# CHANGELOG.md. Publishing the draft is what makes it public and lets the
+# in-app updater offer it.
+#
+# Signing needs the TAURI_SIGNING_PRIVATE_KEY and
+# TAURI_SIGNING_PRIVATE_KEY_PASSWORD secrets (the key kept in .pixl in the
+# maintainer's home folder).
 #
 # With a RELEASE_TOKEN secret (a personal access token with read and write
 # access to this repository's contents) the release is made in its owner's
@@ -62,16 +67,19 @@ jobs:
           $drafts = gh release list --json tagName,isDraft | ConvertFrom-Json | Where-Object { $_.isDraft -and $_.tagName -eq $tag }
           if ($drafts) { gh release delete $tag --yes }
 
-      - name: Build and draft the release
+      - name: Build, sign and draft the release
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: settings
           tagName: ${{ github.ref_name }}
           releaseName: Pixl ${{ github.ref_name }}
           releaseBody: ${{ steps.notes.outputs.body }}
           releaseDraft: true
+          includeUpdaterJson: true
 
       - name: Add a portable zip and download links
         shell: pwsh
@@ -95,6 +103,8 @@ jobs:
             "**[Download the installer]($base/Pixl_${version}_x64-setup.exe)** (recommended), or the [portable zip]($base/$name.zip) if you'd rather not install anything."
             ''
             'Windows may say it protected your PC, because the installer isn''t signed yet: choose **More info**, then **Run anyway**.'
+            ''
+            'The `latest.json` and `.sig` files are used by the in-app updater.'
             ''
             '## What''s new'
             ''

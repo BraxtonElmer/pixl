@@ -35,6 +35,7 @@
     "targets": ["nsis"],
     "icon": ["icons/icon.ico", "icons/icon.png"],
     "externalBin": ["binaries/Pixl"],
+    "createUpdaterArtifacts": true,
     "publisher": "BraxtonElmer",
     "copyright": "Copyright (C) 2026 BraxtonElmer",
     "category": "Utility",
@@ -49,6 +50,13 @@
         "installerIcon": "icons/icon.ico",
         "installerHooks": "windows/hooks.nsh"
       }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEM3QkMxQTVCMUE0QUI2MkYKUldRdnRrb2FXeHE4eDdCL1hTM0dxemdSQjFIVEZleGRUcGwxZFJadHdmaXVlZVA1RmNLUER1UkQK",
+      "endpoints": ["https://github.com/BraxtonElmer/pixl/releases/latest/download/latest.json"],
+      "windows": { "installMode": "passive" }
     }
   }
 }
