@@ -1,0 +1,103 @@
+name: Release
+
+# Pushing a tag like v0.1.0 builds the installer and a portable zip and
+# creates a draft GitHub release with the notes from CHANGELOG.md.
+# Publishing the draft is what makes it public.
+#
+# With a RELEASE_TOKEN secret (a personal access token with read and write
+# access to this repository's contents) the release is made in its owner's
+# name; without one it's made by github-actions.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: settings/package-lock.json
+
+      - name: Install settings dependencies
+        working-directory: settings
+        run: npm ci
+
+      - name: Check the tag matches the app version
+        shell: pwsh
+        run: |
+          $tag = '${{ github.ref_name }}'.TrimStart('v')
+          $app = (Get-Content settings/src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
+          if ($tag -ne $app) { throw "Tag v$tag doesn't match version $app in tauri.conf.json" }
+
+      - name: Release notes from CHANGELOG.md
+        id: notes
+        shell: pwsh
+        run: |
+          $version = '${{ github.ref_name }}'.TrimStart('v')
+          $changelog = Get-Content CHANGELOG.md -Raw
+          $section = [regex]::Match($changelog, "(?ms)^## \[$([regex]::Escape($version))\][^\n]*\n(.*?)(?=^## \[|\z)")
+          if (-not $section.Success) { throw "CHANGELOG.md has no section for $version" }
+          $delimiter = [guid]::NewGuid()
+          "body<<$delimiter`n$($section.Groups[1].Value.Trim())`n$delimiter" >> $env:GITHUB_OUTPUT
+
+      # Re-running a release replaces its unpublished draft instead of adding a second one.
+      - name: Remove an old draft of this release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = '${{ github.ref_name }}'
+          $drafts = gh release list --json tagName,isDraft | ConvertFrom-Json | Where-Object { $_.isDraft -and $_.tagName -eq $tag }
+          if ($drafts) { gh release delete $tag --yes }
+
+      - name: Build and draft the release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: settings
+          tagName: ${{ github.ref_name }}
+          releaseName: Pixl ${{ github.ref_name }}
+          releaseBody: ${{ steps.notes.outputs.body }}
+          releaseDraft: true
+
+      - name: Add a portable zip and download links
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
+          NOTES: ${{ steps.notes.outputs.body }}
+        run: |
+          $tag = '${{ github.ref_name }}'
+          $version = $tag.TrimStart('v')
+          $name = "Pixl-$tag-portable-x64"
+          New-Item -ItemType Directory $name | Out-Null
+          Copy-Item target/release/pixl-tray.exe "$name/Pixl.exe"
+          Copy-Item target/release/pixl-settings.exe, LICENSE $name
+          Compress-Archive $name "$name.zip"
+          gh release upload $tag "$name.zip" --clobber
+
+          $base = "https://github.com/${{ github.repository }}/releases/download/$tag"
+          $download = @(
+            '## Download'
+            ''
+            "**[Download the installer]($base/Pixl_${version}_x64-setup.exe)** (recommended), or the [portable zip]($base/$name.zip) if you'd rather not install anything."
+            ''
+            'Windows may say it protected your PC, because the installer isn''t signed yet: choose **More info**, then **Run anyway**.'
+            ''
+            '## What''s new'
+            ''
+          ) -join "`n"
+          Set-Content notes.md ($download + $env:NOTES) -Encoding utf8
+          gh release edit $tag --notes-file notes.md

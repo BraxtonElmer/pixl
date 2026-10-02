@@ -18,8 +18,9 @@ return. Your PC, your apps and your other screens keep running.
 - **Gentle.** Screens fade out over 5 seconds first; touch anything to
   cancel. Any mouse movement or key brings them back, or only moving the
   cursor onto that screen, if you prefer.
-- **Light.** The part that runs in the tray is under 500 KB, uses about
-  1.5 MB of memory and no measurable CPU. The settings window closes
+- **Light.** The part that runs in the tray is about half a megabyte, uses
+  about 2 MB of memory and no measurable CPU: it sleeps until a screen could
+  actually turn off. The settings window closes
   completely when you close it.
 
 Shortcuts work anywhere and can be changed in the settings:
@@ -30,7 +31,8 @@ Shortcuts work anywhere and can be changed in the settings:
 
 Download the installer from the
 [latest release](https://github.com/BraxtonElmer/pixl/releases/latest) and
-run it. No admin rights are needed.
+run it. No admin rights are needed. There's also a portable zip if you'd
+rather not install anything.
 
 ## Build
 
