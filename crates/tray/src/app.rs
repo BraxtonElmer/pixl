@@ -45,7 +45,9 @@ const TIMER_FADE: usize = 2;
 const TIMER_REDETECT: usize = 3;
 /// How often to look (see `Engine::next_wait`). With every screen on, Pixl
 /// sleeps until just before the earliest timer runs out, but at most `max`.
-const PACE: Pace = Pace { fast: 250, dark: 5000, away: 2000, max: 30_000, probe_lead: PROBE_BEFORE_MS };
+/// Dark screens wake on input as it happens, so their regular look only has
+/// to catch things like a fullscreen game starting, which can wait.
+const PACE: Pace = Pace { fast: 250, dark: 30_000, away: 2000, max: 30_000, probe_lead: PROBE_BEFORE_MS };
 /// While the settings window is open its countdowns need a fresh look every second.
 const WATCHED_MS: u64 = 1000;
 /// Input arriving as events (a dark screen) steps at most this often.
@@ -146,6 +148,7 @@ pub fn run(open_settings_now: bool) {
         return;
     }
     log::init();
+    overlay::set_owner(hwnd);
     allow_dark_menus();
     audio::init();
     unsafe { WTSRegisterSessionNotification(hwnd, NOTIFY_FOR_THIS_SESSION) };
@@ -768,6 +771,13 @@ fn run_command(hwnd: HWND, cmd: usize) {
 
 unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     match msg {
+        overlay::MSG_COVER_MOUSE => {
+            with_app(|a| {
+                a.input.mouse_moved();
+                a.input_event();
+            });
+            0
+        }
         WM_INPUT => {
             match input::raw_kind(lparam) {
                 input::Raw::Key => {
